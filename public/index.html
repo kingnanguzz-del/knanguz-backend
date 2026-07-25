@@ -19,7 +19,7 @@
     <div class="flex items-center gap-3">
       <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center font-bold text-slate-900">kG</div>
       <div>
-        <h1 class="text-lg font-semibold tracking-tight">knanGuz</h1>
+        <h1 class="text-lg font-semibold tracking-tight">knanGuz- by BEN</h1>
         <p class="text-xs text-slate-400 -mt-1">Web Code → Android APK, entirely in the cloud</p>
       </div>
     </div>
@@ -43,20 +43,59 @@
         </div>
       </div>
 
+      <!-- Icon Upload -->
+      <div>
+        <label class="text-xs text-slate-400">App Icon <span class="text-slate-600">(optional — PNG/JPG, any size)</span></label>
+        <div class="mt-1 flex items-center gap-4">
+          <div id="iconBox" class="w-16 h-16 rounded-2xl bg-slate-900 border-2 border-dashed border-slate-700 flex items-center justify-center overflow-hidden flex-shrink-0">
+            <span id="iconPlaceholder" class="text-2xl">🤖</span>
+            <img id="iconPreview" class="w-full h-full hidden" style="object-fit:cover;" alt="Icon preview" />
+          </div>
+          <div class="flex-1">
+            <label for="iconFile" class="cursor-pointer inline-block bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs rounded-lg px-4 py-2 transition">
+              Choose Icon
+            </label>
+            <input id="iconFile" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" />
+            <p id="iconName" class="text-xs text-slate-500 mt-1">No file chosen — default knanGuz icon will be used</p>
+            <button id="clearIcon" class="text-xs text-red-400 hover:text-red-300 mt-1 hidden">Remove icon</button>
+          </div>
+        </div>
+      </div>
+
       <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400 pt-2">2. Your Code</h2>
+
+      <!-- Language Selector -->
       <div>
-        <label class="text-xs text-slate-400">HTML</label>
-        <textarea id="htmlCode" rows="5" placeholder="<h1>Hello knanGuz</h1>"
-          class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+        <label class="text-xs text-slate-400">Language / Framework</label>
+        <select id="langSelect" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          <option value="html">HTML / CSS / JS</option>
+          <option value="react">React (JSX)</option>
+          <option value="vue">Vue.js</option>
+          <option value="svelte">Svelte</option>
+        </select>
       </div>
-      <div>
-        <label class="text-xs text-slate-400">CSS</label>
-        <textarea id="cssCode" rows="3" placeholder="body { background: #111; color: #fff; }"
-          class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+
+      <div id="htmlFields">
+        <div>
+          <label class="text-xs text-slate-400">HTML</label>
+          <textarea id="htmlCode" rows="5" placeholder="<h1>Hello knanGuz</h1>"
+            class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+        </div>
+        <div class="mt-3">
+          <label class="text-xs text-slate-400">CSS</label>
+          <textarea id="cssCode" rows="3" placeholder="body { background: #111; color: #fff; }"
+            class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+        </div>
+        <div class="mt-3">
+          <label class="text-xs text-slate-400">JavaScript</label>
+          <textarea id="jsCode" rows="3" placeholder="console.log('knanGuz running');"
+            class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+        </div>
       </div>
-      <div>
-        <label class="text-xs text-slate-400">JavaScript</label>
-        <textarea id="jsCode" rows="3" placeholder="console.log('knanGuz running');"
+
+      <div id="singleCodeField" class="hidden">
+        <label id="singleCodeLabel" class="text-xs text-slate-400">Paste your code</label>
+        <textarea id="singleCode" rows="12" placeholder="Paste your React / Vue / Svelte code here..."
           class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
       </div>
 
@@ -109,6 +148,71 @@
     const idleMsg = document.getElementById('idleMsg');
     const buildBtn = document.getElementById('buildBtn');
     const formError = document.getElementById('formError');
+    const iconFile = document.getElementById('iconFile');
+    const iconPreview = document.getElementById('iconPreview');
+    const iconPlaceholder = document.getElementById('iconPlaceholder');
+    const iconName = document.getElementById('iconName');
+    const clearIcon = document.getElementById('clearIcon');
+    const langSelect = document.getElementById('langSelect');
+    const htmlFields = document.getElementById('htmlFields');
+    const singleCodeField = document.getElementById('singleCodeField');
+    const singleCodeLabel = document.getElementById('singleCodeLabel');
+    const singleCode = document.getElementById('singleCode');
+
+    let iconBase64 = null;
+    let iconMime = null;
+
+    // Language switcher
+    const langLabels = {
+      react: 'React JSX Code',
+      vue: 'Vue.js Code',
+      svelte: 'Svelte Code',
+    };
+    langSelect.addEventListener('change', () => {
+      const val = langSelect.value;
+      if (val === 'html') {
+        htmlFields.classList.remove('hidden');
+        singleCodeField.classList.add('hidden');
+      } else {
+        htmlFields.classList.add('hidden');
+        singleCodeField.classList.remove('hidden');
+        singleCodeLabel.textContent = langLabels[val] || 'Paste your code';
+        singleCode.placeholder = `Paste your ${val.charAt(0).toUpperCase()+val.slice(1)} code here...`;
+      }
+    });
+
+    // Icon upload
+    iconFile.addEventListener('change', () => {
+      const file = iconFile.files[0];
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Icon must be under 5MB.');
+        iconFile.value = '';
+        return;
+      }
+      iconMime = file.type;
+      iconName.textContent = file.name;
+      clearIcon.classList.remove('hidden');
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        iconBase64 = e.target.result.split(',')[1];
+        iconPreview.src = e.target.result;
+        iconPreview.classList.remove('hidden');
+        iconPlaceholder.classList.add('hidden');
+      };
+      reader.readAsDataURL(file);
+    });
+
+    clearIcon.addEventListener('click', () => {
+      iconFile.value = '';
+      iconBase64 = null;
+      iconMime = null;
+      iconPreview.classList.add('hidden');
+      iconPreview.src = '';
+      iconPlaceholder.classList.remove('hidden');
+      iconName.textContent = 'No file chosen — default knanGuz icon will be used';
+      clearIcon.classList.add('hidden');
+    });
 
     function renderSteps(activeIndex, failed = false) {
       trackerEl.innerHTML = '';
@@ -130,9 +234,7 @@
     async function startBuild() {
       const appName = document.getElementById('appName').value.trim();
       const packageId = document.getElementById('packageId').value.trim();
-      const htmlCode = document.getElementById('htmlCode').value;
-      const cssCode = document.getElementById('cssCode').value;
-      const jsCode = document.getElementById('jsCode').value;
+      const lang = langSelect.value;
 
       formError.classList.add('hidden');
 
@@ -142,7 +244,13 @@
         return;
       }
 
-      const combinedHtml = `<!DOCTYPE html>
+      let finalHtml = '';
+
+      if (lang === 'html') {
+        const htmlCode = document.getElementById('htmlCode').value;
+        const cssCode = document.getElementById('cssCode').value;
+        const jsCode = document.getElementById('jsCode').value;
+        finalHtml = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${appName}</title>
@@ -151,6 +259,16 @@
 ${htmlCode}
 <script>${jsCode.replace(/<\/script>/gi, '<\\/script>')}<\/script>
 </body></html>`;
+      } else {
+        const code = singleCode.value;
+        if (!code.trim()) {
+          formError.textContent = 'Please paste your code.';
+          formError.classList.remove('hidden');
+          return;
+        }
+        // Send raw code + lang to backend for server-side compilation
+        finalHtml = `__FRAMEWORK__${lang}__CODE__${code}`;
+      }
 
       buildBtn.disabled = true;
       buildBtn.textContent = 'Starting build...';
@@ -163,12 +281,21 @@ ${htmlCode}
         const res = await fetch(`${API_BASE}/api/build`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ appName, packageId, htmlCode: combinedHtml }),
+          body: JSON.stringify({
+            appName,
+            packageId,
+            htmlCode: finalHtml,
+            iconBase64: iconBase64 || null,
+            iconMime: iconMime || null,
+            lang,
+          }),
         });
+
         if (!res.ok) {
           const e = await res.json().catch(() => ({}));
           throw new Error(e.error || `Server error ${res.status}`);
         }
+
         const { buildId } = await res.json();
         renderSteps(1);
         pollStatus(buildId);
