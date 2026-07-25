@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const path = require('path');
 
 const app = express();
-app.use(express.json({ limit: '15mb' }));
+app.use(express.json({ limit: '20mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 const {
@@ -27,9 +27,24 @@ function githubHeaders() {
   };
 }
 
+async function commitFile(filePath, base64Content, message) {
+  const res = await fetch(
+    `${GITHUB_API}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}`,
+    {
+      method: 'PUT',
+      headers: githubHeaders(),
+      body: JSON.stringify({ message, content: base64Content }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`GitHub Contents API failed: ${res.status} ${err}`);
+  }
+}
+
 app.post('/api/build', async (req, res) => {
   try {
-    const { appName, packageId, htmlCode } = req.body || {};
+    const { appName, packageId, htmlCode, iconBase64, iconMime } = req.body || {};
 
     if (!appName || typeof appName !== 'string') {
       return res.status(400).json({ error: 'appName is required.' });
@@ -40,9 +55,12 @@ app.post('/api/build', async (req, res) => {
     if (!htmlCode || typeof htmlCode !== 'string') {
       return res.status(400).json({ error: 'htmlCode is required.' });
     }
+    if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO || !BUILD_CALLBACK_SECRET) {
+      return res.status(500).json({ error: 'Server is not configured with GitHub credentials.' });
+    }
 
     const buildId = crypto.randomUUID();
-    const filePath = `builds/${buildId}/index.html`;
+    const htmlPath = `builds/${buildId}/index.html`;
 
     builds.set(buildId, {
       status: 'queued',
@@ -54,21 +72,21 @@ app.post('/api/build', async (req, res) => {
       error: null,
     });
 
-    const putRes = await fetch(
-      `${GITHUB_API}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${filePath}`,
-      {
-        method: 'PUT',
-        headers: githubHeaders(),
-        body: JSON.stringify({
-          message: `knanGuz: add build payload ${buildId}`,
-          content: Buffer.from(htmlCode, 'utf-8').toString('base64'),
-        }),
-      }
+    await commitFile(
+      htmlPath,
+      Buffer.from(htmlCode, 'utf-8').toString('base64'),
+      `knanGuz: add html payload ${buildId}`
     );
 
-    if (!putRes.ok) {
-      const errText = await putRes.text();
-      throw new Error(`GitHub Contents API failed: ${putRes.status} ${errText}`);
+    let iconPath = null;
+    if (iconBase64 && iconMime) {
+      const ext = iconMime === 'image/png' ? 'png' : iconMime === 'image/webp' ? 'webp' : 'jpg';
+      iconPath = `builds/${buildId}/icon.${ext}`;
+      await commitFile(
+        iconPath,
+        iconBase64,
+        `knanGuz: add icon payload ${buildId}`
+      );
     }
 
     const dispatchRes = await fetch(
@@ -82,7 +100,8 @@ app.post('/api/build', async (req, res) => {
             build_id: buildId,
             app_name: appName,
             package_id: packageId,
-            payload_path: filePath,
+            payload_path: htmlPath,
+            icon_path: iconPath || '',
             callback_url: `${PUBLIC_BASE_URL}/api/build-complete`,
           },
         }),
@@ -107,9 +126,7 @@ app.post('/api/build', async (req, res) => {
 
 app.get('/api/status/:buildId', (req, res) => {
   const record = builds.get(req.params.buildId);
-  if (!record) {
-    return res.status(404).json({ error: 'Unknown buildId.' });
-  }
+  if (!record) return res.status(404).json({ error: 'Unknown buildId.' });
   return res.json({
     status: record.status,
     appName: record.appName,
@@ -124,18 +141,13 @@ app.post('/api/build-complete', (req, res) => {
   if (secret !== BUILD_CALLBACK_SECRET) {
     return res.status(401).json({ error: 'Invalid callback secret.' });
   }
-
   const { build_id, status, download_url, error } = req.body || {};
   const record = builds.get(build_id);
-  if (!record) {
-    return res.status(404).json({ error: 'Unknown build_id.' });
-  }
-
+  if (!record) return res.status(404).json({ error: 'Unknown build_id.' });
   record.status = status || record.status;
   record.updatedAt = Date.now();
   if (download_url) record.downloadUrl = download_url;
   if (error) record.error = error;
-
   builds.set(build_id, record);
   return res.json({ ok: true });
 });
@@ -144,4 +156,10 @@ app.get('/healthz', (_req, res) => res.send('ok'));
 
 app.listen(PORT, () => {
   console.log(`[knanGuz] Server listening on port ${PORT}`);
+  // Keep-alive ping every 4 minutes to prevent Render free tier spin-down
+  setInterval(() => {
+    fetch(`${PUBLIC_BASE_URL}/healthz`)
+      .then(() => console.log('[knanGuz] Keep-alive ping sent'))
+      .catch(() => console.log('[knanGuz] Keep-alive ping failed'));
+  }, 4 * 60 * 1000);
 });
