@@ -42,9 +42,60 @@ async function commitFile(filePath, base64Content, message) {
   }
 }
 
+function compileFrameworkCode(lang, code, appName) {
+  if (lang === 'react') {
+    return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${appName}</title>
+</head><body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script type="text/babel">
+${code}
+const rootElement = document.getElementById('root');
+const root = ReactDOM.createRoot(rootElement);
+root.render(React.createElement(App));
+<\/script>
+</body></html>`;
+  }
+
+  if (lang === 'vue') {
+    return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${appName}</title>
+</head><body>
+<div id="app"></div>
+<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+<script>
+${code}
+Vue.createApp(App).mount('#app');
+<\/script>
+</body></html>`;
+  }
+
+  if (lang === 'svelte') {
+    // Svelte needs a build step — we wrap it in a note for now
+    return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${appName}</title>
+<style>body{font-family:sans-serif;padding:20px;background:#0f172a;color:#fff;}</style>
+</head><body>
+<h2>⚠️ Svelte Support</h2>
+<p>Svelte requires a compile step. Please compile your Svelte app to HTML/JS first using the Svelte REPL at <a href="https://svelte.dev/repl" style="color:#34d399">svelte.dev/repl</a>, then paste the output HTML here using the HTML/CSS/JS option.</p>
+</body></html>`;
+  }
+
+  return code;
+}
+
 app.post('/api/build', async (req, res) => {
   try {
-    const { appName, packageId, htmlCode, iconBase64, iconMime } = req.body || {};
+    const { appName, packageId, htmlCode, iconBase64, iconMime, lang } = req.body || {};
 
     if (!appName || typeof appName !== 'string') {
       return res.status(400).json({ error: 'appName is required.' });
@@ -57,6 +108,15 @@ app.post('/api/build', async (req, res) => {
     }
     if (!GITHUB_TOKEN || !GITHUB_OWNER || !GITHUB_REPO || !BUILD_CALLBACK_SECRET) {
       return res.status(500).json({ error: 'Server is not configured with GitHub credentials.' });
+    }
+
+    // Handle framework code compilation
+    let finalHtml = htmlCode;
+    if (htmlCode.startsWith('__FRAMEWORK__')) {
+      const parts = htmlCode.split('__CODE__');
+      const frameworkLang = parts[0].replace('__FRAMEWORK__', '');
+      const rawCode = parts[1] || '';
+      finalHtml = compileFrameworkCode(frameworkLang, rawCode, appName);
     }
 
     const buildId = crypto.randomUUID();
@@ -74,7 +134,7 @@ app.post('/api/build', async (req, res) => {
 
     await commitFile(
       htmlPath,
-      Buffer.from(htmlCode, 'utf-8').toString('base64'),
+      Buffer.from(finalHtml, 'utf-8').toString('base64'),
       `knanGuz: add html payload ${buildId}`
     );
 
@@ -156,7 +216,6 @@ app.get('/healthz', (_req, res) => res.send('ok'));
 
 app.listen(PORT, () => {
   console.log(`[knanGuz] Server listening on port ${PORT}`);
-  // Keep-alive ping every 4 minutes to prevent Render free tier spin-down
   setInterval(() => {
     fetch(`${PUBLIC_BASE_URL}/healthz`)
       .then(() => console.log('[knanGuz] Keep-alive ping sent'))
