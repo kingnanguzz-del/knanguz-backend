@@ -8,9 +8,11 @@
 <style>
   body { background: radial-gradient(circle at top, #0f172a 0%, #020617 60%); }
   .glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(148,163,184,0.15); }
-  textarea, input { font-family: ui-monospace, monospace; }
+  textarea, input, select { font-family: ui-monospace, monospace; }
   @keyframes pulseGlow { 0%,100%{ box-shadow:0 0 0 0 rgba(34,197,94,.6);} 50%{ box-shadow:0 0 0 8px rgba(34,197,94,0);} }
   .pulse { animation: pulseGlow 1.6s infinite; }
+  .locked { position: relative; }
+  .locked::after { content: '⭐ Premium'; position: absolute; top: 8px; right: 8px; background: #854d0e; color: #fef08a; font-size: 10px; padding: 2px 8px; border-radius: 999px; }
 </style>
 </head>
 <body class="min-h-screen text-slate-100">
@@ -19,12 +21,50 @@
     <div class="flex items-center gap-3">
       <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center font-bold text-slate-900">kG</div>
       <div>
-        <h1 class="text-lg font-semibold tracking-tight">knanGuz- by BEN</h1>
+        <h1 class="text-lg font-semibold tracking-tight">knanGuz~ by BEN</h1>
         <p class="text-xs text-slate-400 -mt-1">Web Code → Android APK, entirely in the cloud</p>
       </div>
     </div>
-    <span class="text-xs text-slate-400">Powered by GitHub Actions</span>
+    <div class="flex items-center gap-3">
+      <span id="premiumBadge" class="hidden text-xs bg-yellow-900 text-yellow-300 px-3 py-1 rounded-full">⭐ Premium</span>
+      <button id="subscribeBtn" onclick="openSubscribe()"
+        class="text-xs bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-semibold px-4 py-2 rounded-lg">
+        ⭐ Go Premium — $5/mo
+      </button>
+    </div>
   </header>
+
+  <!-- Premium Modal -->
+  <div id="premiumModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+    <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
+      <h2 class="text-lg font-bold text-emerald-400">⭐ knanGuz Premium</h2>
+
+      <div id="subscribeView">
+        <p class="text-xs text-slate-400 mb-3">Premium unlocks React, Vue and Svelte builds for $5/month.</p>
+        <div class="bg-slate-900 rounded-xl p-3 mb-3">
+          <p class="text-xs text-slate-400">Your Device ID</p>
+          <p id="deviceIdDisplay" class="text-xs font-mono text-emerald-400 break-all mt-1"></p>
+        </div>
+        <p class="text-xs text-slate-500 mb-4">Tapping Subscribe will open WhatsApp with your Device ID. Send $5 via M-Pesa to receive your premium code.</p>
+        <button onclick="sendWhatsApp()"
+          class="w-full bg-green-500 hover:bg-green-400 text-white font-semibold rounded-lg py-2 text-sm mb-2">
+          📱 Subscribe via WhatsApp
+        </button>
+        <p class="text-xs text-slate-400 text-center mb-2">Already have a code?</p>
+        <input id="premiumCodeInput" type="text" placeholder="XXXX-XXXX-XXXX-XXXX"
+          class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-2" />
+        <button onclick="activatePremium()"
+          class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold rounded-lg py-2 text-sm">
+          Activate Premium
+        </button>
+        <p id="premiumError" class="text-xs text-red-400 hidden mt-2 text-center"></p>
+      </div>
+
+      <button onclick="closePremiumModal()" class="w-full text-xs text-slate-500 hover:text-slate-300 pt-2">
+        Close
+      </button>
+    </div>
+  </div>
 
   <main class="max-w-6xl mx-auto px-6 py-8 grid lg:grid-cols-2 gap-8">
 
@@ -45,19 +85,19 @@
 
       <!-- Icon Upload -->
       <div>
-        <label class="text-xs text-slate-400">App Icon <span class="text-slate-600">(optional — PNG/JPG, any size)</span></label>
+        <label class="text-xs text-slate-400">App Icon <span class="text-slate-600">(optional — PNG/JPG)</span></label>
         <div class="mt-1 flex items-center gap-4">
-          <div id="iconBox" class="w-16 h-16 rounded-2xl bg-slate-900 border-2 border-dashed border-slate-700 flex items-center justify-center overflow-hidden flex-shrink-0">
+          <div class="w-16 h-16 rounded-2xl bg-slate-900 border-2 border-dashed border-slate-700 flex items-center justify-center overflow-hidden flex-shrink-0">
             <span id="iconPlaceholder" class="text-2xl">🤖</span>
-            <img id="iconPreview" class="w-full h-full hidden" style="object-fit:cover;" alt="Icon preview" />
+            <img id="iconPreview" class="w-full h-full hidden" style="object-fit:cover;" alt="Icon" />
           </div>
           <div class="flex-1">
             <label for="iconFile" class="cursor-pointer inline-block bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 text-xs rounded-lg px-4 py-2 transition">
               Choose Icon
             </label>
             <input id="iconFile" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" />
-            <p id="iconName" class="text-xs text-slate-500 mt-1">No file chosen — default knanGuz icon will be used</p>
-            <button id="clearIcon" class="text-xs text-red-400 hover:text-red-300 mt-1 hidden">Remove icon</button>
+            <p id="iconName" class="text-xs text-slate-500 mt-1">No file — default icon used</p>
+            <button id="clearIcon" class="text-xs text-red-400 mt-1 hidden">Remove</button>
           </div>
         </div>
       </div>
@@ -67,14 +107,22 @@
       <!-- Language Selector -->
       <div>
         <label class="text-xs text-slate-400">Language / Framework</label>
-        <select id="langSelect" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-          <option value="html">HTML / CSS / JS</option>
-          <option value="react">React (JSX)</option>
-          <option value="vue">Vue.js</option>
-          <option value="svelte">Svelte</option>
+        <select id="langSelect"
+          class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+          <option value="html">HTML / CSS / JS — Free</option>
+          <option value="react">⭐ React (JSX) — Premium</option>
+          <option value="vue">⭐ Vue.js — Premium</option>
+          <option value="svelte">⭐ Svelte — Premium</option>
         </select>
       </div>
 
+      <!-- Premium lock notice -->
+      <div id="premiumNotice" class="hidden bg-yellow-900/30 border border-yellow-700/40 rounded-xl p-3 text-xs text-yellow-300">
+        ⭐ This language requires Premium ($5/month).
+        <button onclick="openSubscribe()" class="underline ml-1">Subscribe or activate your code →</button>
+      </div>
+
+      <!-- HTML fields -->
       <div id="htmlFields">
         <div>
           <label class="text-xs text-slate-400">HTML</label>
@@ -93,9 +141,10 @@
         </div>
       </div>
 
+      <!-- Single code field for frameworks -->
       <div id="singleCodeField" class="hidden">
         <label id="singleCodeLabel" class="text-xs text-slate-400">Paste your code</label>
-        <textarea id="singleCode" rows="12" placeholder="Paste your React / Vue / Svelte code here..."
+        <textarea id="singleCode" rows="12" placeholder="Paste your code here..."
           class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
       </div>
 
@@ -134,6 +183,7 @@
 
   <script>
     const API_BASE = '';
+    const WHATSAPP_NUMBER = '254740403637';
     const STEPS = [
       { label: 'Uploading code to build server' },
       { label: 'Triggering GitHub Actions cloud runner' },
@@ -142,79 +192,170 @@
       { label: 'Build complete — ready to download' },
     ];
 
-    const trackerEl = document.getElementById('progressTracker');
-    const downloadArea = document.getElementById('downloadArea');
-    const errorArea = document.getElementById('errorArea');
-    const idleMsg = document.getElementById('idleMsg');
-    const buildBtn = document.getElementById('buildBtn');
-    const formError = document.getElementById('formError');
-    const iconFile = document.getElementById('iconFile');
-    const iconPreview = document.getElementById('iconPreview');
-    const iconPlaceholder = document.getElementById('iconPlaceholder');
-    const iconName = document.getElementById('iconName');
-    const clearIcon = document.getElementById('clearIcon');
+    // --- Device fingerprint ---
+    function getDeviceId() {
+      let id = localStorage.getItem('knanguz_device_id');
+      if (!id) {
+        const raw = [
+          navigator.userAgent,
+          screen.width,
+          screen.height,
+          Intl.DateTimeFormat().resolvedOptions().timeZone,
+          navigator.language,
+          screen.colorDepth,
+        ].join('|');
+        // Simple hash
+        let hash = 0;
+        for (let i = 0; i < raw.length; i++) {
+          hash = ((hash << 5) - hash) + raw.charCodeAt(i);
+          hash |= 0;
+        }
+        id = Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
+        id = id.match(/.{1,4}/g).join('-');
+        localStorage.setItem('knanguz_device_id', id);
+      }
+      return id;
+    }
+
+    function getPremiumCode() {
+      return localStorage.getItem('knanguz_premium_code') || null;
+    }
+
+    function isPremiumActive() {
+      return !!getPremiumCode();
+    }
+
+    // --- Premium UI ---
+    function updatePremiumUI() {
+      const badge = document.getElementById('premiumBadge');
+      const btn = document.getElementById('subscribeBtn');
+      if (isPremiumActive()) {
+        badge.classList.remove('hidden');
+        btn.classList.add('hidden');
+      } else {
+        badge.classList.add('hidden');
+        btn.classList.remove('hidden');
+      }
+    }
+
+    function openSubscribe() {
+      document.getElementById('deviceIdDisplay').textContent = getDeviceId();
+      document.getElementById('premiumModal').classList.remove('hidden');
+    }
+
+    function closePremiumModal() {
+      document.getElementById('premiumModal').classList.add('hidden');
+      document.getElementById('premiumError').classList.add('hidden');
+    }
+
+    function sendWhatsApp() {
+      const deviceId = getDeviceId();
+      // Register subscribe request
+      fetch(`${API_BASE}/api/subscribe-request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId }),
+      });
+      const msg = encodeURIComponent(
+        `Hi Benard, I want knanGuz Premium ($5/month).\n\nMy Device ID is: ${deviceId}\n\nPlease send me my premium code after payment.`
+      );
+      window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`, '_blank');
+    }
+
+    async function activatePremium() {
+      const code = document.getElementById('premiumCodeInput').value.trim();
+      const deviceId = getDeviceId();
+      const errEl = document.getElementById('premiumError');
+      errEl.classList.add('hidden');
+
+      if (!code) {
+        errEl.textContent = 'Please enter your premium code.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      const res = await fetch(`${API_BASE}/api/verify-premium`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId, code }),
+      });
+      const data = await res.json();
+
+      if (data.valid) {
+        localStorage.setItem('knanguz_premium_code', code);
+        closePremiumModal();
+        updatePremiumUI();
+        alert('🎉 Premium activated! You now have access to React, Vue and Svelte builds.');
+      } else {
+        errEl.textContent = data.reason || 'Invalid code.';
+        errEl.classList.remove('hidden');
+      }
+    }
+
+    // --- Language switcher ---
     const langSelect = document.getElementById('langSelect');
     const htmlFields = document.getElementById('htmlFields');
     const singleCodeField = document.getElementById('singleCodeField');
     const singleCodeLabel = document.getElementById('singleCodeLabel');
     const singleCode = document.getElementById('singleCode');
+    const premiumNotice = document.getElementById('premiumNotice');
 
-    let iconBase64 = null;
-    let iconMime = null;
-
-    // Language switcher
-    const langLabels = {
-      react: 'React JSX Code',
-      vue: 'Vue.js Code',
-      svelte: 'Svelte Code',
-    };
     langSelect.addEventListener('change', () => {
       const val = langSelect.value;
+      const isPremiumLang = ['react', 'vue', 'svelte'].includes(val);
+
+      if (isPremiumLang && !isPremiumActive()) {
+        premiumNotice.classList.remove('hidden');
+      } else {
+        premiumNotice.classList.add('hidden');
+      }
+
       if (val === 'html') {
         htmlFields.classList.remove('hidden');
         singleCodeField.classList.add('hidden');
       } else {
         htmlFields.classList.add('hidden');
         singleCodeField.classList.remove('hidden');
-        singleCodeLabel.textContent = langLabels[val] || 'Paste your code';
-        singleCode.placeholder = `Paste your ${val.charAt(0).toUpperCase()+val.slice(1)} code here...`;
+        const labels = { react: 'React JSX Code', vue: 'Vue.js Code', svelte: 'Svelte Code' };
+        singleCodeLabel.textContent = labels[val] || 'Your Code';
+        singleCode.placeholder = `Paste your ${val} code here...`;
       }
     });
 
-    // Icon upload
-    iconFile.addEventListener('change', () => {
-      const file = iconFile.files[0];
+    // --- Icon upload ---
+    let iconBase64 = null;
+    let iconMime = null;
+
+    document.getElementById('iconFile').addEventListener('change', function() {
+      const file = this.files[0];
       if (!file) return;
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Icon must be under 5MB.');
-        iconFile.value = '';
-        return;
-      }
+      if (file.size > 5 * 1024 * 1024) { alert('Icon must be under 5MB.'); return; }
       iconMime = file.type;
-      iconName.textContent = file.name;
-      clearIcon.classList.remove('hidden');
+      document.getElementById('iconName').textContent = file.name;
+      document.getElementById('clearIcon').classList.remove('hidden');
       const reader = new FileReader();
       reader.onload = (e) => {
         iconBase64 = e.target.result.split(',')[1];
-        iconPreview.src = e.target.result;
-        iconPreview.classList.remove('hidden');
-        iconPlaceholder.classList.add('hidden');
+        document.getElementById('iconPreview').src = e.target.result;
+        document.getElementById('iconPreview').classList.remove('hidden');
+        document.getElementById('iconPlaceholder').classList.add('hidden');
       };
       reader.readAsDataURL(file);
     });
 
-    clearIcon.addEventListener('click', () => {
-      iconFile.value = '';
-      iconBase64 = null;
-      iconMime = null;
-      iconPreview.classList.add('hidden');
-      iconPreview.src = '';
-      iconPlaceholder.classList.remove('hidden');
-      iconName.textContent = 'No file chosen — default knanGuz icon will be used';
-      clearIcon.classList.add('hidden');
+    document.getElementById('clearIcon').addEventListener('click', () => {
+      iconBase64 = null; iconMime = null;
+      document.getElementById('iconFile').value = '';
+      document.getElementById('iconPreview').classList.add('hidden');
+      document.getElementById('iconPreview').src = '';
+      document.getElementById('iconPlaceholder').classList.remove('hidden');
+      document.getElementById('iconName').textContent = 'No file — default icon used';
+      document.getElementById('clearIcon').classList.add('hidden');
     });
 
+    // --- Steps ---
     function renderSteps(activeIndex, failed = false) {
+      const trackerEl = document.getElementById('progressTracker');
       trackerEl.innerHTML = '';
       STEPS.forEach((step, i) => {
         const isDone = i < activeIndex;
@@ -231,21 +372,28 @@
 
     renderSteps(-1);
 
+    // --- Build ---
     async function startBuild() {
       const appName = document.getElementById('appName').value.trim();
       const packageId = document.getElementById('packageId').value.trim();
       const lang = langSelect.value;
-
+      const formError = document.getElementById('formError');
       formError.classList.add('hidden');
 
       if (!appName || !/^([a-zA-Z][a-zA-Z0-9_]*\.)+[a-zA-Z][a-zA-Z0-9_]*$/.test(packageId)) {
-        formError.textContent = 'Please provide an App Name and a valid Package ID (e.g. com.user.myapp).';
+        formError.textContent = 'Please provide an App Name and valid Package ID.';
+        formError.classList.remove('hidden');
+        return;
+      }
+
+      const isPremiumLang = ['react', 'vue', 'svelte'].includes(lang);
+      if (isPremiumLang && !isPremiumActive()) {
+        formError.textContent = 'This language requires Premium. Subscribe above.';
         formError.classList.remove('hidden');
         return;
       }
 
       let finalHtml = '';
-
       if (lang === 'html') {
         const htmlCode = document.getElementById('htmlCode').value;
         const cssCode = document.getElementById('cssCode').value;
@@ -266,15 +414,15 @@ ${htmlCode}
           formError.classList.remove('hidden');
           return;
         }
-        // Send raw code + lang to backend for server-side compilation
         finalHtml = `__FRAMEWORK__${lang}__CODE__${code}`;
       }
 
+      const buildBtn = document.getElementById('buildBtn');
       buildBtn.disabled = true;
       buildBtn.textContent = 'Starting build...';
-      idleMsg.classList.add('hidden');
-      downloadArea.classList.add('hidden');
-      errorArea.classList.add('hidden');
+      document.getElementById('idleMsg').classList.add('hidden');
+      document.getElementById('downloadArea').classList.add('hidden');
+      document.getElementById('errorArea').classList.add('hidden');
       renderSteps(0);
 
       try {
@@ -288,6 +436,8 @@ ${htmlCode}
             iconBase64: iconBase64 || null,
             iconMime: iconMime || null,
             lang,
+            deviceId: getDeviceId(),
+            premiumCode: getPremiumCode(),
           }),
         });
 
@@ -310,6 +460,7 @@ ${htmlCode}
 
     function pollStatus(buildId) {
       const map = { queued:1, dispatched:1, building:2, signing:3, success:4, failed:2 };
+      const buildBtn = document.getElementById('buildBtn');
       const timer = setInterval(async () => {
         try {
           const res = await fetch(`${API_BASE}/api/status/${buildId}`);
@@ -318,14 +469,14 @@ ${htmlCode}
           renderSteps(map[data.status] ?? 1, data.status === 'failed');
           if (data.status === 'failed') {
             clearInterval(timer);
-            errorArea.classList.remove('hidden');
+            document.getElementById('errorArea').classList.remove('hidden');
             buildBtn.disabled = false;
             buildBtn.textContent = '🚀 Compile to APK';
           }
           if (data.status === 'success' && data.downloadUrl) {
             clearInterval(timer);
             document.getElementById('downloadBtn').href = data.downloadUrl;
-            downloadArea.classList.remove('hidden');
+            document.getElementById('downloadArea').classList.remove('hidden');
             buildBtn.disabled = false;
             buildBtn.textContent = '🚀 Compile to APK';
           }
@@ -333,7 +484,8 @@ ${htmlCode}
       }, 4000);
     }
 
-    buildBtn.addEventListener('click', startBuild);
+    document.getElementById('buildBtn').addEventListener('click', startBuild);
+    updatePremiumUI();
   </script>
 </body>
   </html>
