@@ -11,8 +11,6 @@
   textarea, input, select { font-family: ui-monospace, monospace; }
   @keyframes pulseGlow { 0%,100%{ box-shadow:0 0 0 0 rgba(34,197,94,.6);} 50%{ box-shadow:0 0 0 8px rgba(34,197,94,0);} }
   .pulse { animation: pulseGlow 1.6s infinite; }
-  .locked { position: relative; }
-  .locked::after { content: '⭐ Premium'; position: absolute; top: 8px; right: 8px; background: #854d0e; color: #fef08a; font-size: 10px; padding: 2px 8px; border-radius: 999px; }
 </style>
 </head>
 <body class="min-h-screen text-slate-100">
@@ -21,12 +19,15 @@
     <div class="flex items-center gap-3">
       <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center font-bold text-slate-900">kG</div>
       <div>
-        <h1 class="text-lg font-semibold tracking-tight">knanGuz~ by BEN</h1>
+        <h1 class="text-lg font-semibold tracking-tight">knanGuz</h1>
         <p class="text-xs text-slate-400 -mt-1">Web Code → Android APK, entirely in the cloud</p>
       </div>
     </div>
     <div class="flex items-center gap-3">
-      <span id="premiumBadge" class="hidden text-xs bg-yellow-900 text-yellow-300 px-3 py-1 rounded-full">⭐ Premium</span>
+      <button id="premiumBadge" onclick="openManage()"
+        class="hidden text-xs bg-yellow-900 text-yellow-300 px-3 py-1 rounded-full hover:bg-yellow-800 transition">
+        ⭐ Premium — Manage
+      </button>
       <button id="subscribeBtn" onclick="openSubscribe()"
         class="text-xs bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-semibold px-4 py-2 rounded-lg">
         ⭐ Go Premium — $5/mo
@@ -34,33 +35,64 @@
     </div>
   </header>
 
-  <!-- Premium Modal -->
+  <!-- Subscribe Modal -->
   <div id="premiumModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
     <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
       <h2 class="text-lg font-bold text-emerald-400">⭐ knanGuz Premium</h2>
-
-      <div id="subscribeView">
-        <p class="text-xs text-slate-400 mb-3">Premium unlocks React, Vue and Svelte builds for $5/month.</p>
-        <div class="bg-slate-900 rounded-xl p-3 mb-3">
-          <p class="text-xs text-slate-400">Your Device ID</p>
-          <p id="deviceIdDisplay" class="text-xs font-mono text-emerald-400 break-all mt-1"></p>
-        </div>
-        <p class="text-xs text-slate-500 mb-4">Tapping Subscribe will open WhatsApp with your Device ID. Send $5 via M-Pesa to receive your premium code.</p>
-        <button onclick="sendWhatsApp()"
-          class="w-full bg-green-500 hover:bg-green-400 text-white font-semibold rounded-lg py-2 text-sm mb-2">
-          📱 Subscribe via WhatsApp
-        </button>
-        <p class="text-xs text-slate-400 text-center mb-2">Already have a code?</p>
-        <input id="premiumCodeInput" type="text" placeholder="XXXX-XXXX-XXXX-XXXX"
-          class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-2" />
-        <button onclick="activatePremium()"
-          class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold rounded-lg py-2 text-sm">
-          Activate Premium
-        </button>
-        <p id="premiumError" class="text-xs text-red-400 hidden mt-2 text-center"></p>
+      <p class="text-xs text-slate-400">Premium unlocks React, Vue and Svelte builds for $5/month.</p>
+      <div class="bg-slate-900 rounded-xl p-3">
+        <p class="text-xs text-slate-400">Your Device ID</p>
+        <p id="deviceIdDisplay" class="text-xs font-mono text-emerald-400 break-all mt-1"></p>
       </div>
-
+      <p class="text-xs text-slate-500">Tap Subscribe — it opens WhatsApp with your Device ID. Send $5 via M-Pesa to receive your premium code.</p>
+      <button onclick="sendWhatsApp()"
+        class="w-full bg-green-500 hover:bg-green-400 text-white font-semibold rounded-lg py-2 text-sm">
+        📱 Subscribe via WhatsApp
+      </button>
+      <p class="text-xs text-slate-400 text-center">Already have a code?</p>
+      <input id="premiumCodeInput" type="text" placeholder="XXXX-XXXX-XXXX-XXXX"
+        class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+      <button onclick="activatePremium()"
+        class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold rounded-lg py-2 text-sm">
+        Activate Premium
+      </button>
+      <p id="premiumError" class="text-xs text-red-400 hidden text-center"></p>
       <button onclick="closePremiumModal()" class="w-full text-xs text-slate-500 hover:text-slate-300 pt-2">
+        Close
+      </button>
+    </div>
+  </div>
+
+  <!-- Manage Premium Modal -->
+  <div id="manageModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+    <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
+      <h2 class="text-lg font-bold text-emerald-400">⭐ Manage Premium</h2>
+      <div class="bg-slate-900 rounded-xl p-3">
+        <p class="text-xs text-slate-400">Your Device ID</p>
+        <p id="manageDeviceId" class="text-xs font-mono text-emerald-400 break-all mt-1"></p>
+      </div>
+      <div class="bg-slate-900 rounded-xl p-3">
+        <p class="text-xs text-slate-400">Active Code</p>
+        <p id="manageCode" class="text-xs font-mono text-yellow-400 break-all mt-1"></p>
+      </div>
+      <p class="text-xs text-slate-500">If your premium stopped working after a VPN change, request a new code via WhatsApp.</p>
+      <button onclick="sendWhatsApp()"
+        class="w-full bg-green-500 hover:bg-green-400 text-white font-semibold rounded-lg py-2 text-sm">
+        📱 Request New Code via WhatsApp
+      </button>
+      <p class="text-xs text-slate-400 text-center">Have a new code?</p>
+      <input id="manageCodeInput" type="text" placeholder="XXXX-XXXX-XXXX-XXXX"
+        class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+      <button onclick="reactivatePremium()"
+        class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold rounded-lg py-2 text-sm">
+        Activate New Code
+      </button>
+      <p id="manageError" class="text-xs text-red-400 hidden text-center"></p>
+      <button onclick="deactivatePremium()"
+        class="w-full text-xs text-red-400 hover:text-red-300 pt-1">
+        Remove Premium from this device
+      </button>
+      <button onclick="closeManageModal()" class="w-full text-xs text-slate-500 hover:text-slate-300">
         Close
       </button>
     </div>
@@ -104,7 +136,6 @@
 
       <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400 pt-2">2. Your Code</h2>
 
-      <!-- Language Selector -->
       <div>
         <label class="text-xs text-slate-400">Language / Framework</label>
         <select id="langSelect"
@@ -116,13 +147,11 @@
         </select>
       </div>
 
-      <!-- Premium lock notice -->
       <div id="premiumNotice" class="hidden bg-yellow-900/30 border border-yellow-700/40 rounded-xl p-3 text-xs text-yellow-300">
         ⭐ This language requires Premium ($5/month).
         <button onclick="openSubscribe()" class="underline ml-1">Subscribe or activate your code →</button>
       </div>
 
-      <!-- HTML fields -->
       <div id="htmlFields">
         <div>
           <label class="text-xs text-slate-400">HTML</label>
@@ -141,7 +170,6 @@
         </div>
       </div>
 
-      <!-- Single code field for frameworks -->
       <div id="singleCodeField" class="hidden">
         <label id="singleCodeLabel" class="text-xs text-slate-400">Paste your code</label>
         <textarea id="singleCode" rows="12" placeholder="Paste your code here..."
@@ -192,27 +220,27 @@
       { label: 'Build complete — ready to download' },
     ];
 
-    // --- Device fingerprint ---
+    // Stable Device ID — VPN changes won't affect this
     function getDeviceId() {
-      let id = localStorage.getItem('knanguz_device_id');
+      let id = localStorage.getItem('knanguz_device_id_v2');
       if (!id) {
         const raw = [
-          navigator.userAgent,
           screen.width,
           screen.height,
-          Intl.DateTimeFormat().resolvedOptions().timeZone,
-          navigator.language,
           screen.colorDepth,
+          navigator.platform || 'unknown',
+          navigator.language || 'unknown',
+          Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown',
+          navigator.hardwareConcurrency || 'unknown',
         ].join('|');
-        // Simple hash
         let hash = 0;
         for (let i = 0; i < raw.length; i++) {
           hash = ((hash << 5) - hash) + raw.charCodeAt(i);
           hash |= 0;
         }
-        id = Math.abs(hash).toString(16).toUpperCase().padStart(8, '0');
+        id = Math.abs(hash).toString(16).toUpperCase().padStart(16, '0');
         id = id.match(/.{1,4}/g).join('-');
-        localStorage.setItem('knanguz_device_id', id);
+        localStorage.setItem('knanguz_device_id_v2', id);
       }
       return id;
     }
@@ -225,7 +253,6 @@
       return !!getPremiumCode();
     }
 
-    // --- Premium UI ---
     function updatePremiumUI() {
       const badge = document.getElementById('premiumBadge');
       const btn = document.getElementById('subscribeBtn');
@@ -240,92 +267,108 @@
 
     function openSubscribe() {
       document.getElementById('deviceIdDisplay').textContent = getDeviceId();
+      document.getElementById('premiumCodeInput').value = '';
+      document.getElementById('premiumError').classList.add('hidden');
       document.getElementById('premiumModal').classList.remove('hidden');
     }
 
     function closePremiumModal() {
       document.getElementById('premiumModal').classList.add('hidden');
-      document.getElementById('premiumError').classList.add('hidden');
+    }
+
+    function openManage() {
+      document.getElementById('manageDeviceId').textContent = getDeviceId();
+      document.getElementById('manageCode').textContent = getPremiumCode() || 'None';
+      document.getElementById('manageCodeInput').value = '';
+      document.getElementById('manageError').classList.add('hidden');
+      document.getElementById('manageModal').classList.remove('hidden');
+    }
+
+    function closeManageModal() {
+      document.getElementById('manageModal').classList.add('hidden');
+    }
+
+    function deactivatePremium() {
+      if (!confirm('Remove premium from this device?')) return;
+      localStorage.removeItem('knanguz_premium_code');
+      closeManageModal();
+      updatePremiumUI();
     }
 
     function sendWhatsApp() {
       const deviceId = getDeviceId();
-      // Register subscribe request
       fetch(`${API_BASE}/api/subscribe-request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deviceId }),
       });
       const msg = encodeURIComponent(
-        `Hi Benard, I want knanGuz Premium ($5/month).\n\nMy Device ID is: ${deviceId}\n\nPlease send me my premium code after payment.`
+        `Hi Benard, I want knanGuz Premium ($5/month).\n\nMy Device ID: ${deviceId}\n\nPlease send my premium code after payment.`
       );
       window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`, '_blank');
     }
 
     async function activatePremium() {
-      const code = document.getElementById('premiumCodeInput').value.trim();
+      const code = document.getElementById('premiumCodeInput').value.trim().toUpperCase().replace(/\s/g, '');
       const deviceId = getDeviceId();
       const errEl = document.getElementById('premiumError');
       errEl.classList.add('hidden');
-
-      if (!code) {
-        errEl.textContent = 'Please enter your premium code.';
-        errEl.classList.remove('hidden');
-        return;
-      }
-
+      if (!code) { errEl.textContent = 'Please enter your premium code.'; errEl.classList.remove('hidden'); return; }
       const res = await fetch(`${API_BASE}/api/verify-premium`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ deviceId, code }),
       });
       const data = await res.json();
-
       if (data.valid) {
         localStorage.setItem('knanguz_premium_code', code);
         closePremiumModal();
         updatePremiumUI();
-        alert('🎉 Premium activated! You now have access to React, Vue and Svelte builds.');
+        alert('🎉 Premium activated!');
       } else {
         errEl.textContent = data.reason || 'Invalid code.';
         errEl.classList.remove('hidden');
       }
     }
 
-    // --- Language switcher ---
-    const langSelect = document.getElementById('langSelect');
-    const htmlFields = document.getElementById('htmlFields');
-    const singleCodeField = document.getElementById('singleCodeField');
-    const singleCodeLabel = document.getElementById('singleCodeLabel');
-    const singleCode = document.getElementById('singleCode');
-    const premiumNotice = document.getElementById('premiumNotice');
+    async function reactivatePremium() {
+      const code = document.getElementById('manageCodeInput').value.trim().toUpperCase().replace(/\s/g, '');
+      const deviceId = getDeviceId();
+      const errEl = document.getElementById('manageError');
+      errEl.classList.add('hidden');
+      if (!code) { errEl.textContent = 'Please enter your new code.'; errEl.classList.remove('hidden'); return; }
+      const res = await fetch(`${API_BASE}/api/verify-premium`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId, code }),
+      });
+      const data = await res.json();
+      if (data.valid) {
+        localStorage.setItem('knanguz_premium_code', code);
+        closeManageModal();
+        updatePremiumUI();
+        alert('🎉 Premium reactivated!');
+      } else {
+        errEl.textContent = data.reason || 'Invalid code.';
+        errEl.classList.remove('hidden');
+      }
+    }
 
+    const langSelect = document.getElementById('langSelect');
     langSelect.addEventListener('change', () => {
       const val = langSelect.value;
       const isPremiumLang = ['react', 'vue', 'svelte'].includes(val);
-
-      if (isPremiumLang && !isPremiumActive()) {
-        premiumNotice.classList.remove('hidden');
-      } else {
-        premiumNotice.classList.add('hidden');
-      }
-
-      if (val === 'html') {
-        htmlFields.classList.remove('hidden');
-        singleCodeField.classList.add('hidden');
-      } else {
-        htmlFields.classList.add('hidden');
-        singleCodeField.classList.remove('hidden');
+      document.getElementById('premiumNotice').classList.toggle('hidden', !isPremiumLang || isPremiumActive());
+      document.getElementById('htmlFields').classList.toggle('hidden', val !== 'html');
+      document.getElementById('singleCodeField').classList.toggle('hidden', val === 'html');
+      if (val !== 'html') {
         const labels = { react: 'React JSX Code', vue: 'Vue.js Code', svelte: 'Svelte Code' };
-        singleCodeLabel.textContent = labels[val] || 'Your Code';
-        singleCode.placeholder = `Paste your ${val} code here...`;
+        document.getElementById('singleCodeLabel').textContent = labels[val] || 'Your Code';
+        document.getElementById('singleCode').placeholder = `Paste your ${val} code here...`;
       }
     });
 
-    // --- Icon upload ---
-    let iconBase64 = null;
-    let iconMime = null;
-
+    let iconBase64 = null, iconMime = null;
     document.getElementById('iconFile').addEventListener('change', function() {
       const file = this.files[0];
       if (!file) return;
@@ -353,7 +396,6 @@
       document.getElementById('clearIcon').classList.add('hidden');
     });
 
-    // --- Steps ---
     function renderSteps(activeIndex, failed = false) {
       const trackerEl = document.getElementById('progressTracker');
       trackerEl.innerHTML = '';
@@ -372,7 +414,6 @@
 
     renderSteps(-1);
 
-    // --- Build ---
     async function startBuild() {
       const appName = document.getElementById('appName').value.trim();
       const packageId = document.getElementById('packageId').value.trim();
@@ -386,8 +427,7 @@
         return;
       }
 
-      const isPremiumLang = ['react', 'vue', 'svelte'].includes(lang);
-      if (isPremiumLang && !isPremiumActive()) {
+      if (['react','vue','svelte'].includes(lang) && !isPremiumActive()) {
         formError.textContent = 'This language requires Premium. Subscribe above.';
         formError.classList.remove('hidden');
         return;
@@ -398,22 +438,10 @@
         const htmlCode = document.getElementById('htmlCode').value;
         const cssCode = document.getElementById('cssCode').value;
         const jsCode = document.getElementById('jsCode').value;
-        finalHtml = `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${appName}</title>
-<style>${cssCode}</style>
-</head><body>
-${htmlCode}
-<script>${jsCode.replace(/<\/script>/gi, '<\\/script>')}<\/script>
-</body></html>`;
+        finalHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${appName}</title><style>${cssCode}</style></head><body>${htmlCode}<script>${jsCode.replace(/<\/script>/gi,'<\\/script>')}<\/script></body></html>`;
       } else {
-        const code = singleCode.value;
-        if (!code.trim()) {
-          formError.textContent = 'Please paste your code.';
-          formError.classList.remove('hidden');
-          return;
-        }
+        const code = document.getElementById('singleCode').value;
+        if (!code.trim()) { formError.textContent = 'Please paste your code.'; formError.classList.remove('hidden'); return; }
         finalHtml = `__FRAMEWORK__${lang}__CODE__${code}`;
       }
 
@@ -430,22 +458,14 @@ ${htmlCode}
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            appName,
-            packageId,
-            htmlCode: finalHtml,
+            appName, packageId, htmlCode: finalHtml,
             iconBase64: iconBase64 || null,
             iconMime: iconMime || null,
-            lang,
-            deviceId: getDeviceId(),
+            lang, deviceId: getDeviceId(),
             premiumCode: getPremiumCode(),
           }),
         });
-
-        if (!res.ok) {
-          const e = await res.json().catch(() => ({}));
-          throw new Error(e.error || `Server error ${res.status}`);
-        }
-
+        if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || `Server error ${res.status}`); }
         const { buildId } = await res.json();
         renderSteps(1);
         pollStatus(buildId);
@@ -488,4 +508,4 @@ ${htmlCode}
     updatePremiumUI();
   </script>
 </body>
-  </html>
+</html>
