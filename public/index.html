@@ -7,7 +7,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   body { background: radial-gradient(circle at top, #0f172a 0%, #020617 60%); }
-  .glass { background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(148,163,184,0.15); }
+  .glass { background: rgba(15,23,42,0.6); backdrop-filter: blur(12px); border: 1px solid rgba(148,163,184,0.15); }
   textarea, input, select { font-family: ui-monospace, monospace; }
   @keyframes pulseGlow { 0%,100%{ box-shadow:0 0 0 0 rgba(34,197,94,.6);} 50%{ box-shadow:0 0 0 8px rgba(34,197,94,0);} }
   .pulse { animation: pulseGlow 1.6s infinite; }
@@ -24,83 +24,83 @@
       </div>
     </div>
     <div class="flex items-center gap-3">
-      <button id="premiumBadge" onclick="openManage()"
+      <button id="premiumBadge" onclick="openManage('premium')"
         class="hidden text-xs bg-yellow-900 text-yellow-300 px-3 py-1 rounded-full hover:bg-yellow-800 transition">
         ⭐ Premium — Manage
       </button>
-      <button id="subscribeBtn" onclick="openSubscribe()"
-        class="text-xs bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-semibold px-4 py-2 rounded-lg">
-        ⭐ Go Premium — $5/mo
+      <button id="proBadge" onclick="openManage('pro')"
+        class="hidden text-xs bg-blue-900 text-blue-300 px-3 py-1 rounded-full hover:bg-blue-800 transition">
+        🚀 Pro — Manage
+      </button>
+      <button id="subscribeBtn" onclick="openSubscribe('premium')"
+        class="text-xs bg-yellow-500 hover:bg-yellow-400 text-slate-900 font-semibold px-3 py-2 rounded-lg">
+        ⭐ Premium $5
+      </button>
+      <button id="proBtn" onclick="openSubscribe('pro')"
+        class="text-xs bg-blue-500 hover:bg-blue-400 text-white font-semibold px-3 py-2 rounded-lg">
+        🚀 Pro $10
       </button>
     </div>
   </header>
 
   <!-- Subscribe Modal -->
-  <div id="premiumModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+  <div id="subscribeModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
     <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
-      <h2 class="text-lg font-bold text-emerald-400">⭐ knanGuz Premium</h2>
-      <p class="text-xs text-slate-400">Premium unlocks React, Vue and Svelte builds for $5/month.</p>
+      <h2 id="subscribeTitle" class="text-lg font-bold text-emerald-400">⭐ knanGuz Premium</h2>
+      <div id="subscribeDesc" class="text-xs text-slate-400"></div>
       <div class="bg-slate-900 rounded-xl p-3">
         <p class="text-xs text-slate-400">Your Device ID</p>
-        <p id="deviceIdDisplay" class="text-xs font-mono text-emerald-400 break-all mt-1"></p>
+        <p id="subDeviceId" class="text-xs font-mono text-emerald-400 break-all mt-1"></p>
       </div>
-      <p class="text-xs text-slate-500">Tap Subscribe — it opens WhatsApp with your Device ID. Send $5 via M-Pesa to receive your premium code.</p>
-      <button onclick="sendWhatsApp()"
+      <p class="text-xs text-slate-500">Tap Subscribe — opens WhatsApp with your Device ID. Pay via M-Pesa to receive your code.</p>
+      <button id="subWhatsAppBtn" onclick="sendWhatsApp()"
         class="w-full bg-green-500 hover:bg-green-400 text-white font-semibold rounded-lg py-2 text-sm">
         📱 Subscribe via WhatsApp
       </button>
       <p class="text-xs text-slate-400 text-center">Already have a code?</p>
-      <input id="premiumCodeInput" type="text" placeholder="XXXX-XXXX-XXXX-XXXX"
+      <input id="subCodeInput" type="text" placeholder="XXXX-XXXX-XXXX-XXXX"
         class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-      <button onclick="activatePremium()"
+      <button onclick="activateCode()"
         class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold rounded-lg py-2 text-sm">
-        Activate Premium
+        Activate Code
       </button>
-      <p id="premiumError" class="text-xs text-red-400 hidden text-center"></p>
-      <button onclick="closePremiumModal()" class="w-full text-xs text-slate-500 hover:text-slate-300 pt-2">
-        Close
-      </button>
+      <p id="subError" class="text-xs text-red-400 hidden text-center"></p>
+      <button onclick="closeSubscribeModal()" class="w-full text-xs text-slate-500 hover:text-slate-300 pt-2">Close</button>
     </div>
   </div>
 
-  <!-- Manage Premium Modal -->
+  <!-- Manage Modal -->
   <div id="manageModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
     <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
-      <h2 class="text-lg font-bold text-emerald-400">⭐ Manage Premium</h2>
+      <h2 id="manageTitle" class="text-lg font-bold text-emerald-400">Manage Subscription</h2>
       <div class="bg-slate-900 rounded-xl p-3">
-        <p class="text-xs text-slate-400">Your Device ID</p>
+        <p class="text-xs text-slate-400">Device ID</p>
         <p id="manageDeviceId" class="text-xs font-mono text-emerald-400 break-all mt-1"></p>
       </div>
       <div class="bg-slate-900 rounded-xl p-3">
         <p class="text-xs text-slate-400">Active Code</p>
         <p id="manageCode" class="text-xs font-mono text-yellow-400 break-all mt-1"></p>
       </div>
-      <p class="text-xs text-slate-500">If your premium stopped working after a VPN change, request a new code via WhatsApp.</p>
+      <p class="text-xs text-slate-500">VPN change? Request a new code via WhatsApp.</p>
       <button onclick="sendWhatsApp()"
         class="w-full bg-green-500 hover:bg-green-400 text-white font-semibold rounded-lg py-2 text-sm">
-        📱 Request New Code via WhatsApp
+        📱 Request New Code
       </button>
-      <p class="text-xs text-slate-400 text-center">Have a new code?</p>
       <input id="manageCodeInput" type="text" placeholder="XXXX-XXXX-XXXX-XXXX"
         class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-      <button onclick="reactivatePremium()"
+      <button onclick="reactivateCode()"
         class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold rounded-lg py-2 text-sm">
         Activate New Code
       </button>
       <p id="manageError" class="text-xs text-red-400 hidden text-center"></p>
-      <button onclick="deactivatePremium()"
-        class="w-full text-xs text-red-400 hover:text-red-300 pt-1">
-        Remove Premium from this device
-      </button>
-      <button onclick="closeManageModal()" class="w-full text-xs text-slate-500 hover:text-slate-300">
-        Close
-      </button>
+      <button onclick="deactivate()" class="w-full text-xs text-red-400 hover:text-red-300 pt-1">Remove from this device</button>
+      <button onclick="closeManageModal()" class="w-full text-xs text-slate-500 hover:text-slate-300">Close</button>
     </div>
   </div>
 
   <main class="max-w-6xl mx-auto px-6 py-8 grid lg:grid-cols-2 gap-8">
-
     <section class="glass rounded-2xl p-6 space-y-5">
+
       <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400">1. App Metadata</h2>
       <div class="grid grid-cols-2 gap-4">
         <div>
@@ -136,44 +136,122 @@
 
       <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400 pt-2">2. Your Code</h2>
 
-      <div>
-        <label class="text-xs text-slate-400">Language / Framework</label>
-        <select id="langSelect"
-          class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-          <option value="html">HTML / CSS / JS — Free</option>
-          <option value="react">⭐ React (JSX) — Premium</option>
-          <option value="vue">⭐ Vue.js — Premium</option>
-          <option value="svelte">⭐ Svelte — Premium</option>
-        </select>
+      <!-- Build Mode Tabs -->
+      <div class="flex gap-2">
+        <button id="tabCode" onclick="setTab('code')"
+          class="flex-1 py-2 text-xs rounded-lg bg-emerald-500 text-slate-900 font-semibold transition">
+          📝 Paste Code
+        </button>
+        <button id="tabZip" onclick="setTab('zip')"
+          class="flex-1 py-2 text-xs rounded-lg bg-slate-700 text-slate-300 font-semibold transition">
+          🚀 Upload ZIP — Pro
+        </button>
       </div>
 
-      <div id="premiumNotice" class="hidden bg-yellow-900/30 border border-yellow-700/40 rounded-xl p-3 text-xs text-yellow-300">
-        ⭐ This language requires Premium ($5/month).
-        <button onclick="openSubscribe()" class="underline ml-1">Subscribe or activate your code →</button>
+      <!-- CODE TAB -->
+      <div id="codeTab">
+        <div class="mb-3">
+          <label class="text-xs text-slate-400">Language / Framework</label>
+          <select id="langSelect"
+            class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            <option value="html">HTML / CSS / JS — Free</option>
+            <option value="react">⭐ React (JSX) — Premium</option>
+            <option value="vue">⭐ Vue.js — Premium</option>
+            <option value="svelte">⭐ Svelte — Premium</option>
+            <option value="angular">⭐ Angular — Premium</option>
+          </select>
+        </div>
+
+        <div id="premiumNotice" class="hidden bg-yellow-900/30 border border-yellow-700/40 rounded-xl p-3 text-xs text-yellow-300 mb-3">
+          ⭐ This language requires Premium ($5/month).
+          <button onclick="openSubscribe('premium')" class="underline ml-1">Subscribe →</button>
+        </div>
+
+        <div id="htmlFields">
+          <div>
+            <label class="text-xs text-slate-400">HTML</label>
+            <textarea id="htmlCode" rows="4" placeholder="<h1>Hello knanGuz</h1>"
+              class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+          </div>
+          <div class="mt-2">
+            <label class="text-xs text-slate-400">CSS</label>
+            <textarea id="cssCode" rows="3" placeholder="body { background: #111; color: #fff; }"
+              class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+          </div>
+          <div class="mt-2">
+            <label class="text-xs text-slate-400">JavaScript</label>
+            <textarea id="jsCode" rows="3" placeholder="console.log('knanGuz running');"
+              class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+          </div>
+        </div>
+
+        <div id="singleCodeField" class="hidden">
+          <label id="singleCodeLabel" class="text-xs text-slate-400">Paste your code</label>
+          <textarea id="singleCode" rows="10" placeholder="Paste your code here..."
+            class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+        </div>
       </div>
 
-      <div id="htmlFields">
+      <!-- ZIP TAB -->
+      <div id="zipTab" class="hidden space-y-4">
+        <div class="bg-blue-900/30 border border-blue-700/40 rounded-xl p-4">
+          <p class="text-xs text-blue-300 font-semibold mb-1">🚀 Pro Feature — ZIP Upload</p>
+          <p class="text-xs text-slate-400">Upload your full project as a ZIP file. Supports React, Vue, Angular, Next.js, Nuxt, Svelte, plain HTML and more. Auto-detects framework and builds automatically.</p>
+        </div>
+
+        <div id="proNotice" class="hidden bg-blue-900/30 border border-blue-700/40 rounded-xl p-3 text-xs text-blue-300">
+          🚀 ZIP upload requires Pro ($10/month).
+          <button onclick="openSubscribe('pro')" class="underline ml-1">Subscribe →</button>
+        </div>
+
+        <!-- ZIP or Code toggle inside Pro -->
         <div>
-          <label class="text-xs text-slate-400">HTML</label>
-          <textarea id="htmlCode" rows="5" placeholder="<h1>Hello knanGuz</h1>"
-            class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+          <label class="text-xs text-slate-400 block mb-2">Input method</label>
+          <div class="flex gap-2">
+            <button id="proTabZip" onclick="setProInput('zip')"
+              class="flex-1 py-2 text-xs rounded-lg bg-blue-500 text-white font-semibold">
+              📦 Upload ZIP
+            </button>
+            <button id="proTabCode" onclick="setProInput('code')"
+              class="flex-1 py-2 text-xs rounded-lg bg-slate-700 text-slate-300 font-semibold">
+              📝 Paste Code
+            </button>
+          </div>
         </div>
-        <div class="mt-3">
-          <label class="text-xs text-slate-400">CSS</label>
-          <textarea id="cssCode" rows="3" placeholder="body { background: #111; color: #fff; }"
-            class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
-        </div>
-        <div class="mt-3">
-          <label class="text-xs text-slate-400">JavaScript</label>
-          <textarea id="jsCode" rows="3" placeholder="console.log('knanGuz running');"
-            class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
-        </div>
-      </div>
 
-      <div id="singleCodeField" class="hidden">
-        <label id="singleCodeLabel" class="text-xs text-slate-400">Paste your code</label>
-        <textarea id="singleCode" rows="12" placeholder="Paste your code here..."
-          class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"></textarea>
+        <!-- ZIP upload area -->
+        <div id="zipUploadArea">
+          <label for="zipFile" class="cursor-pointer block border-2 border-dashed border-blue-700/50 rounded-xl p-6 text-center hover:border-blue-500 transition">
+            <div class="text-3xl mb-2">📦</div>
+            <p class="text-sm text-slate-300 font-semibold">Tap to upload ZIP file</p>
+            <p class="text-xs text-slate-500 mt-1">Max 20MB — React, Vue, Angular, Next.js, Nuxt, Svelte, HTML</p>
+          </label>
+          <input id="zipFile" type="file" accept=".zip" class="hidden" />
+          <div id="zipInfo" class="hidden mt-2 bg-slate-900 rounded-xl p-3">
+            <p class="text-xs text-slate-400">Selected file</p>
+            <p id="zipFileName" class="text-sm text-emerald-400 font-mono mt-1"></p>
+            <p id="zipDetected" class="text-xs text-slate-500 mt-1"></p>
+            <button onclick="clearZip()" class="text-xs text-red-400 mt-1">Remove</button>
+          </div>
+        </div>
+
+        <!-- Pro code paste area -->
+        <div id="proCodeArea" class="hidden">
+          <label class="text-xs text-slate-400 block mb-1">Paste your full project code</label>
+          <textarea id="proCode" rows="10" placeholder="Paste your full app code here..."
+            class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+          <div class="mt-2">
+            <label class="text-xs text-slate-400">Framework</label>
+            <select id="proLang"
+              class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="react">React</option>
+              <option value="vue">Vue.js</option>
+              <option value="angular">Angular</option>
+              <option value="svelte">Svelte</option>
+              <option value="html">HTML/CSS/JS</option>
+            </select>
+          </div>
+        </div>
       </div>
 
       <button id="buildBtn"
@@ -212,6 +290,13 @@
   <script>
     const API_BASE = '';
     const WHATSAPP_NUMBER = '254740403637';
+    let currentSubTier = 'premium';
+    let currentManageTier = 'premium';
+    let activeZipBase64 = null;
+    let activeTab = 'code';
+    let activeProInput = 'zip';
+    let iconBase64 = null, iconMime = null;
+
     const STEPS = [
       { label: 'Uploading code to build server' },
       { label: 'Triggering GitHub Actions cloud runner' },
@@ -220,155 +305,192 @@
       { label: 'Build complete — ready to download' },
     ];
 
-    // Stable Device ID — VPN changes won't affect this
+    // Stable Device ID
     function getDeviceId() {
       let id = localStorage.getItem('knanguz_device_id_v2');
       if (!id) {
         const raw = [
-          screen.width,
-          screen.height,
-          screen.colorDepth,
+          screen.width, screen.height, screen.colorDepth,
           navigator.platform || 'unknown',
           navigator.language || 'unknown',
           Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown',
           navigator.hardwareConcurrency || 'unknown',
         ].join('|');
         let hash = 0;
-        for (let i = 0; i < raw.length; i++) {
-          hash = ((hash << 5) - hash) + raw.charCodeAt(i);
-          hash |= 0;
-        }
-        id = Math.abs(hash).toString(16).toUpperCase().padStart(16, '0');
-        id = id.match(/.{1,4}/g).join('-');
+        for (let i = 0; i < raw.length; i++) { hash = ((hash << 5) - hash) + raw.charCodeAt(i); hash |= 0; }
+        id = Math.abs(hash).toString(16).toUpperCase().padStart(16, '0').match(/.{1,4}/g).join('-');
         localStorage.setItem('knanguz_device_id_v2', id);
       }
       return id;
     }
 
-    function getPremiumCode() {
-      return localStorage.getItem('knanguz_premium_code') || null;
+    function getPremiumCode() { return localStorage.getItem('knanguz_premium_code') || null; }
+    function getProCode() { return localStorage.getItem('knanguz_pro_code') || null; }
+    function isPremium() { return !!getPremiumCode(); }
+    function isPro() { return !!getProCode(); }
+
+    function updateUI() {
+      document.getElementById('premiumBadge').classList.toggle('hidden', !isPremium());
+      document.getElementById('proBadge').classList.toggle('hidden', !isPro());
+      document.getElementById('subscribeBtn').classList.toggle('hidden', isPremium());
+      document.getElementById('proBtn').classList.toggle('hidden', isPro());
     }
 
-    function isPremiumActive() {
-      return !!getPremiumCode();
-    }
-
-    function updatePremiumUI() {
-      const badge = document.getElementById('premiumBadge');
-      const btn = document.getElementById('subscribeBtn');
-      if (isPremiumActive()) {
-        badge.classList.remove('hidden');
-        btn.classList.add('hidden');
+    // Tab switching
+    function setTab(tab) {
+      activeTab = tab;
+      document.getElementById('codeTab').classList.toggle('hidden', tab !== 'code');
+      document.getElementById('zipTab').classList.toggle('hidden', tab !== 'zip');
+      document.getElementById('tabCode').className = `flex-1 py-2 text-xs rounded-lg font-semibold transition ${tab === 'code' ? 'bg-emerald-500 text-slate-900' : 'bg-slate-700 text-slate-300'}`;
+      document.getElementById('tabZip').className = `flex-1 py-2 text-xs rounded-lg font-semibold transition ${tab === 'zip' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-300'}`;
+      if (tab === 'zip' && !isPro()) {
+        document.getElementById('proNotice').classList.remove('hidden');
       } else {
-        badge.classList.add('hidden');
-        btn.classList.remove('hidden');
+        document.getElementById('proNotice').classList.add('hidden');
       }
     }
 
-    function openSubscribe() {
-      document.getElementById('deviceIdDisplay').textContent = getDeviceId();
-      document.getElementById('premiumCodeInput').value = '';
-      document.getElementById('premiumError').classList.add('hidden');
-      document.getElementById('premiumModal').classList.remove('hidden');
+    function setProInput(mode) {
+      activeProInput = mode;
+      document.getElementById('zipUploadArea').classList.toggle('hidden', mode !== 'zip');
+      document.getElementById('proCodeArea').classList.toggle('hidden', mode !== 'code');
+      document.getElementById('proTabZip').className = `flex-1 py-2 text-xs rounded-lg font-semibold ${mode === 'zip' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-300'}`;
+      document.getElementById('proTabCode').className = `flex-1 py-2 text-xs rounded-lg font-semibold ${mode === 'code' ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-300'}`;
     }
 
-    function closePremiumModal() {
-      document.getElementById('premiumModal').classList.add('hidden');
+    // Subscribe modal
+    function openSubscribe(tier) {
+      currentSubTier = tier;
+      const titles = { premium: '⭐ knanGuz Premium — $5/mo', pro: '🚀 knanGuz Pro — $10/mo' };
+      const descs = {
+        premium: 'Unlocks React, Vue, Svelte and Angular builds.',
+        pro: 'Unlocks ZIP file uploads. Build full projects — React, Vue, Angular, Next.js, Nuxt, Svelte, HTML and more. Auto-detects framework.'
+      };
+      document.getElementById('subscribeTitle').textContent = titles[tier];
+      document.getElementById('subscribeDesc').textContent = descs[tier];
+      document.getElementById('subDeviceId').textContent = getDeviceId();
+      document.getElementById('subCodeInput').value = '';
+      document.getElementById('subError').classList.add('hidden');
+      document.getElementById('subscribeModal').classList.remove('hidden');
     }
 
-    function openManage() {
+    function closeSubscribeModal() { document.getElementById('subscribeModal').classList.add('hidden'); }
+
+    function openManage(tier) {
+      currentManageTier = tier;
+      const code = tier === 'pro' ? getProCode() : getPremiumCode();
+      document.getElementById('manageTitle').textContent = tier === 'pro' ? '🚀 Manage Pro' : '⭐ Manage Premium';
       document.getElementById('manageDeviceId').textContent = getDeviceId();
-      document.getElementById('manageCode').textContent = getPremiumCode() || 'None';
+      document.getElementById('manageCode').textContent = code || 'None';
       document.getElementById('manageCodeInput').value = '';
       document.getElementById('manageError').classList.add('hidden');
       document.getElementById('manageModal').classList.remove('hidden');
     }
 
-    function closeManageModal() {
-      document.getElementById('manageModal').classList.add('hidden');
-    }
+    function closeManageModal() { document.getElementById('manageModal').classList.add('hidden'); }
 
-    function deactivatePremium() {
-      if (!confirm('Remove premium from this device?')) return;
-      localStorage.removeItem('knanguz_premium_code');
+    function deactivate() {
+      if (!confirm('Remove subscription from this device?')) return;
+      if (currentManageTier === 'pro') localStorage.removeItem('knanguz_pro_code');
+      else localStorage.removeItem('knanguz_premium_code');
       closeManageModal();
-      updatePremiumUI();
+      updateUI();
     }
 
     function sendWhatsApp() {
       const deviceId = getDeviceId();
+      const tier = currentSubTier || currentManageTier;
+      const price = tier === 'pro' ? '$10' : '$5';
       fetch(`${API_BASE}/api/subscribe-request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceId }),
+        body: JSON.stringify({ deviceId, tier }),
       });
-      const msg = encodeURIComponent(
-        `Hi Benard, I want knanGuz Premium ($5/month).\n\nMy Device ID: ${deviceId}\n\nPlease send my premium code after payment.`
-      );
+      const msg = encodeURIComponent(`Hi Benard, I want knanGuz ${tier.toUpperCase()} (${price}/month).\n\nMy Device ID: ${deviceId}\n\nPlease send my code after payment.`);
       window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`, '_blank');
     }
 
-    async function activatePremium() {
-      const code = document.getElementById('premiumCodeInput').value.trim().toUpperCase().replace(/\s/g, '');
-      const deviceId = getDeviceId();
-      const errEl = document.getElementById('premiumError');
+    async function activateCode() {
+      const code = document.getElementById('subCodeInput').value.trim().toUpperCase().replace(/\s/g,'');
+      const errEl = document.getElementById('subError');
       errEl.classList.add('hidden');
-      if (!code) { errEl.textContent = 'Please enter your premium code.'; errEl.classList.remove('hidden'); return; }
+      if (!code) { errEl.textContent = 'Please enter your code.'; errEl.classList.remove('hidden'); return; }
       const res = await fetch(`${API_BASE}/api/verify-premium`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceId, code }),
+        body: JSON.stringify({ deviceId: getDeviceId(), code, tier: currentSubTier }),
       });
       const data = await res.json();
       if (data.valid) {
-        localStorage.setItem('knanguz_premium_code', code);
-        closePremiumModal();
-        updatePremiumUI();
-        alert('🎉 Premium activated!');
+        localStorage.setItem(currentSubTier === 'pro' ? 'knanguz_pro_code' : 'knanguz_premium_code', code);
+        closeSubscribeModal();
+        updateUI();
+        alert(`🎉 ${currentSubTier.toUpperCase()} activated!`);
       } else {
         errEl.textContent = data.reason || 'Invalid code.';
         errEl.classList.remove('hidden');
       }
     }
 
-    async function reactivatePremium() {
-      const code = document.getElementById('manageCodeInput').value.trim().toUpperCase().replace(/\s/g, '');
-      const deviceId = getDeviceId();
+    async function reactivateCode() {
+      const code = document.getElementById('manageCodeInput').value.trim().toUpperCase().replace(/\s/g,'');
       const errEl = document.getElementById('manageError');
       errEl.classList.add('hidden');
       if (!code) { errEl.textContent = 'Please enter your new code.'; errEl.classList.remove('hidden'); return; }
       const res = await fetch(`${API_BASE}/api/verify-premium`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ deviceId, code }),
+        body: JSON.stringify({ deviceId: getDeviceId(), code, tier: currentManageTier }),
       });
       const data = await res.json();
       if (data.valid) {
-        localStorage.setItem('knanguz_premium_code', code);
+        localStorage.setItem(currentManageTier === 'pro' ? 'knanguz_pro_code' : 'knanguz_premium_code', code);
         closeManageModal();
-        updatePremiumUI();
-        alert('🎉 Premium reactivated!');
+        updateUI();
+        alert('🎉 Reactivated!');
       } else {
         errEl.textContent = data.reason || 'Invalid code.';
         errEl.classList.remove('hidden');
       }
     }
 
-    const langSelect = document.getElementById('langSelect');
-    langSelect.addEventListener('change', () => {
-      const val = langSelect.value;
-      const isPremiumLang = ['react', 'vue', 'svelte'].includes(val);
-      document.getElementById('premiumNotice').classList.toggle('hidden', !isPremiumLang || isPremiumActive());
+    // Language switcher
+    document.getElementById('langSelect').addEventListener('change', function() {
+      const val = this.value;
+      const isPremiumLang = ['react','vue','svelte','angular'].includes(val);
+      document.getElementById('premiumNotice').classList.toggle('hidden', !isPremiumLang || isPremium());
       document.getElementById('htmlFields').classList.toggle('hidden', val !== 'html');
       document.getElementById('singleCodeField').classList.toggle('hidden', val === 'html');
       if (val !== 'html') {
-        const labels = { react: 'React JSX Code', vue: 'Vue.js Code', svelte: 'Svelte Code' };
+        const labels = { react:'React JSX Code', vue:'Vue.js Code', svelte:'Svelte Code', angular:'Angular Code' };
         document.getElementById('singleCodeLabel').textContent = labels[val] || 'Your Code';
         document.getElementById('singleCode').placeholder = `Paste your ${val} code here...`;
       }
     });
 
-    let iconBase64 = null, iconMime = null;
+    // ZIP upload
+    document.getElementById('zipFile').addEventListener('change', function() {
+      const file = this.files[0];
+      if (!file) return;
+      if (file.size > 20 * 1024 * 1024) { alert('ZIP must be under 20MB.'); return; }
+      document.getElementById('zipFileName').textContent = file.name;
+      document.getElementById('zipDetected').textContent = 'Reading file...';
+      document.getElementById('zipInfo').classList.remove('hidden');
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        activeZipBase64 = e.target.result.split(',')[1];
+        document.getElementById('zipDetected').textContent = '✅ ZIP ready for upload';
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function clearZip() {
+      activeZipBase64 = null;
+      document.getElementById('zipFile').value = '';
+      document.getElementById('zipInfo').classList.add('hidden');
+    }
+
+    // Icon upload
     document.getElementById('iconFile').addEventListener('change', function() {
       const file = this.files[0];
       if (!file) return;
@@ -397,18 +519,18 @@
     });
 
     function renderSteps(activeIndex, failed = false) {
-      const trackerEl = document.getElementById('progressTracker');
-      trackerEl.innerHTML = '';
+      const el = document.getElementById('progressTracker');
+      el.innerHTML = '';
       STEPS.forEach((step, i) => {
         const isDone = i < activeIndex;
         const isActive = i === activeIndex && !failed;
         const isFailedHere = failed && i === activeIndex;
-        const dotColor = isFailedHere ? 'bg-red-500' : isDone ? 'bg-emerald-500' : isActive ? 'bg-emerald-400 pulse' : 'bg-slate-700';
-        const textColor = isFailedHere ? 'text-red-300' : isDone || isActive ? 'text-slate-100' : 'text-slate-500';
+        const dot = isFailedHere ? 'bg-red-500' : isDone ? 'bg-emerald-500' : isActive ? 'bg-emerald-400 pulse' : 'bg-slate-700';
+        const text = isFailedHere ? 'text-red-300' : isDone || isActive ? 'text-slate-100' : 'text-slate-500';
         const li = document.createElement('li');
         li.className = 'flex items-start gap-3';
-        li.innerHTML = `<div class="w-3 h-3 rounded-full mt-1 ${dotColor}"></div><p class="text-sm ${textColor}">${step.label}</p>`;
-        trackerEl.appendChild(li);
+        li.innerHTML = `<div class="w-3 h-3 rounded-full mt-1 ${dot}"></div><p class="text-sm ${text}">${step.label}</p>`;
+        el.appendChild(li);
       });
     }
 
@@ -417,7 +539,6 @@
     async function startBuild() {
       const appName = document.getElementById('appName').value.trim();
       const packageId = document.getElementById('packageId').value.trim();
-      const lang = langSelect.value;
       const formError = document.getElementById('formError');
       formError.classList.add('hidden');
 
@@ -427,22 +548,61 @@
         return;
       }
 
-      if (['react','vue','svelte'].includes(lang) && !isPremiumActive()) {
-        formError.textContent = 'This language requires Premium. Subscribe above.';
-        formError.classList.remove('hidden');
-        return;
-      }
+      let payload = {
+        appName, packageId,
+        iconBase64: iconBase64 || null,
+        iconMime: iconMime || null,
+        deviceId: getDeviceId(),
+        premiumCode: getPremiumCode(),
+        proCode: getProCode(),
+      };
 
-      let finalHtml = '';
-      if (lang === 'html') {
-        const htmlCode = document.getElementById('htmlCode').value;
-        const cssCode = document.getElementById('cssCode').value;
-        const jsCode = document.getElementById('jsCode').value;
-        finalHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${appName}</title><style>${cssCode}</style></head><body>${htmlCode}<script>${jsCode.replace(/<\/script>/gi,'<\\/script>')}<\/script></body></html>`;
+      if (activeTab === 'zip') {
+        // Pro ZIP or code build
+        if (!isPro()) {
+          formError.textContent = 'ZIP upload requires Pro ($10/month).';
+          formError.classList.remove('hidden');
+          return;
+        }
+        if (activeProInput === 'zip') {
+          if (!activeZipBase64) {
+            formError.textContent = 'Please upload a ZIP file.';
+            formError.classList.remove('hidden');
+            return;
+          }
+          payload.buildMode = 'zip';
+          payload.zipBase64 = activeZipBase64;
+        } else {
+          const code = document.getElementById('proCode').value;
+          const lang = document.getElementById('proLang').value;
+          if (!code.trim()) {
+            formError.textContent = 'Please paste your code.';
+            formError.classList.remove('hidden');
+            return;
+          }
+          payload.buildMode = 'zip';
+          payload.htmlCode = `__FRAMEWORK__${lang}__CODE__${code}`;
+        }
       } else {
-        const code = document.getElementById('singleCode').value;
-        if (!code.trim()) { formError.textContent = 'Please paste your code.'; formError.classList.remove('hidden'); return; }
-        finalHtml = `__FRAMEWORK__${lang}__CODE__${code}`;
+        // Free/Premium code build
+        const lang = document.getElementById('langSelect').value;
+        if (['react','vue','svelte','angular'].includes(lang) && !isPremium()) {
+          formError.textContent = 'This language requires Premium ($5/month).';
+          formError.classList.remove('hidden');
+          return;
+        }
+        payload.lang = lang;
+        payload.buildMode = 'code';
+        if (lang === 'html') {
+          const htmlCode = document.getElementById('htmlCode').value;
+          const cssCode = document.getElementById('cssCode').value;
+          const jsCode = document.getElementById('jsCode').value;
+          payload.htmlCode = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>${appName}</title><style>${cssCode}</style></head><body>${htmlCode}<script>${jsCode.replace(/<\/script>/gi,'<\\/script>')}<\/script></body></html>`;
+        } else {
+          const code = document.getElementById('singleCode').value;
+          if (!code.trim()) { formError.textContent = 'Please paste your code.'; formError.classList.remove('hidden'); return; }
+          payload.htmlCode = `__FRAMEWORK__${lang}__CODE__${code}`;
+        }
       }
 
       const buildBtn = document.getElementById('buildBtn');
@@ -457,13 +617,7 @@
         const res = await fetch(`${API_BASE}/api/build`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            appName, packageId, htmlCode: finalHtml,
-            iconBase64: iconBase64 || null,
-            iconMime: iconMime || null,
-            lang, deviceId: getDeviceId(),
-            premiumCode: getPremiumCode(),
-          }),
+          body: JSON.stringify(payload),
         });
         if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || `Server error ${res.status}`); }
         const { buildId } = await res.json();
@@ -505,7 +659,7 @@
     }
 
     document.getElementById('buildBtn').addEventListener('click', startBuild);
-    updatePremiumUI();
+    updateUI();
   </script>
 </body>
-</html>
+        </html>
