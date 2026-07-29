@@ -1,7 +1,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
-const AdmZip = require('adm-zip');
+const fs = require('fs');
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -20,10 +20,51 @@ const {
 
 const GITHUB_API = 'https://api.github.com';
 const builds = new Map();
-const premiumCodes = new Map();
-const proCodes = new Map();
-const pendingSubscribers = new Map();
 
+// -----------------------------------------------------------------------
+// PERSISTENT STORAGE — saves to disk so codes survive Render restarts
+// -----------------------------------------------------------------------
+const DATA_DIR = path.join(__dirname, 'data');
+const CODES_FILE = path.join(DATA_DIR, 'codes.json');
+const SUBSCRIBERS_FILE = path.join(DATA_DIR, 'subscribers.json');
+const AUTHORIZED_FILE = path.join(DATA_DIR, 'authorized.json');
+
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+function loadJSON(file, fallback) {
+  try {
+    if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf-8'));
+  } catch (e) { console.error('loadJSON error:', e.message); }
+  return fallback;
+}
+
+function saveJSON(file, data) {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (e) { console.error('saveJSON error:', e.message); }
+}
+
+// Load all data at startup
+let codesStore = loadJSON(CODES_FILE, {});
+// Shape: { [code]: { deviceId, tier, createdAt, expiresAt, revoked } }
+
+let subscribersStore = loadJSON(SUBSCRIBERS_FILE, {});
+// Shape: { [deviceId-tier]: { deviceId, tier, requestedAt } }
+
+let authorizedStore = loadJSON(AUTHORIZED_FILE, {});
+// Shape: { [deviceId]: { tier, authorizedAt, revoked, note } }
+// Manual authorizations — no expiry
+
+function saveCodes() { saveJSON(CODES_FILE, codesStore); }
+function saveSubscribers() { saveJSON(SUBSCRIBERS_FILE, subscribersStore); }
+function saveAuthorized() { saveJSON(AUTHORIZED_FILE, authorizedStore); }
+
+// -----------------------------------------------------------------------
+// HELPERS
+// -----------------------------------------------------------------------
 function githubHeaders() {
   return {
     Authorization: `Bearer ${GITHUB_TOKEN}`,
@@ -48,12 +89,10 @@ async function commitFile(filePath, base64Content, message) {
   }
 }
 
-// Detect framework from ZIP contents
 function detectFramework(fileList) {
   const files = fileList.map(f => f.toLowerCase());
   const hasFile = (name) => files.some(f => f.endsWith(name) || f.includes('/' + name));
   const hasExt = (ext) => files.some(f => f.endsWith(ext));
-
   if (hasFile('angular.json')) return 'angular';
   if (hasFile('next.config.js') || hasFile('next.config.ts')) return 'nextjs';
   if (hasFile('nuxt.config.js') || hasFile('nuxt.config.ts')) return 'nuxt';
@@ -65,7 +104,6 @@ function detectFramework(fileList) {
   return 'unknown';
 }
 
-// Get build command and output dir for each framework
 function getBuildConfig(framework) {
   const configs = {
     react:   { install: 'npm install', build: 'npm run build', outDir: 'build' },
@@ -83,11 +121,9 @@ function getBuildConfig(framework) {
 
 function compileFrameworkCode(lang, code, appName) {
   if (lang === 'react') {
-    return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${appName}</title>
-</head><body>
+<title>${appName}</title></head><body>
 <div id="root"></div>
 <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -97,49 +133,21 @@ ${code}
 const rootElement = document.getElementById('root');
 const root = ReactDOM.createRoot(rootElement);
 root.render(React.createElement(App));
-<\/script>
-</body></html>`;
+<\/script></body></html>`;
   }
   if (lang === 'vue') {
-    return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${appName}</title>
-</head><body>
+<title>${appName}</title></head><body>
 <div id="app"></div>
 <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-<script>
-${code}
+<script>${code}
 Vue.createApp(App).mount('#app');
-<\/script>
-</body></html>`;
+<\/script></body></html>`;
   }
-  if (lang === 'angular') {
-    return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${appName}</title>
-</head><body>
-<div id="app" style="font-family:sans-serif;padding:20px;background:#0f172a;color:#fff;">
-<h2>Angular Support</h2>
-<p>For full Angular apps, please use the ZIP upload feature under Pro.</p>
-</div>
-</body></html>`;
-  }
-  if (lang === 'svelte') {
-    return `<!DOCTYPE html>
-<html><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${appName}</title>
-<style>body{font-family:sans-serif;padding:20px;background:#0f172a;color:#fff;}</style>
-</head><body>
-<h2>Svelte Support</h2>
-<p>Compile your Svelte app at 
-<a href="https://svelte.dev/repl" style="color:#34d399">svelte.dev/repl</a>
-then paste the output HTML using HTML/CSS/JS option.</p>
-</body></html>`;
-  }
-  return code;
+<title>${appName}</title></head><body>${code}</body></html>`;
 }
 
 function generateCode(deviceId, tier) {
@@ -149,14 +157,32 @@ function generateCode(deviceId, tier) {
   return code.match(/.{1,4}/g).join('-');
 }
 
+// Check access — checks both code-based and manual authorization
 function checkAccess(deviceId, code, tier) {
-  const store = tier === 'pro' ? proCodes : premiumCodes;
-  const record = store.get(code);
+  // Check manual authorization first — permanent, no expiry
+  const manualAuth = authorizedStore[deviceId];
+  if (manualAuth && !manualAuth.revoked) {
+    if (manualAuth.tier === tier || manualAuth.tier === 'pro') {
+      return { valid: true, source: 'manual' };
+    }
+    // Pro users also get premium access
+    if (tier === 'premium' && manualAuth.tier === 'pro') {
+      return { valid: true, source: 'manual' };
+    }
+  }
+
+  // Check code-based access
+  if (!code) return { valid: false, reason: 'No code provided' };
+  const cleanCode = code.toUpperCase().replace(/\s/g, '');
+  const record = codesStore[cleanCode];
   if (!record) return { valid: false, reason: 'Invalid code' };
-  if (record.revoked) return { valid: false, reason: 'Code revoked' };
+  if (record.revoked) return { valid: false, reason: 'Code has been revoked' };
   if (record.deviceId !== deviceId) return { valid: false, reason: 'Code not valid for this device' };
-  if (Date.now() > record.expiresAt) return { valid: false, reason: 'Code expired' };
-  return { valid: true };
+  if (record.expiresAt && Date.now() > record.expiresAt) return { valid: false, reason: 'Code has expired' };
+  if (record.tier !== tier && !(record.tier === 'pro' && tier === 'premium')) {
+    return { valid: false, reason: `This code is for ${record.tier}, not ${tier}` };
+  }
+  return { valid: true, source: 'code' };
 }
 
 // -----------------------------------------------------------------------
@@ -166,16 +192,18 @@ function checkAccess(deviceId, code, tier) {
 app.post('/api/subscribe-request', (req, res) => {
   const { deviceId, tier = 'premium' } = req.body || {};
   if (!deviceId) return res.status(400).json({ error: 'deviceId required' });
-  pendingSubscribers.set(`${deviceId}-${tier}`, {
-    deviceId, tier, requestedAt: Date.now(),
-  });
+  const key = `${deviceId}-${tier}`;
+  subscribersStore[key] = { deviceId, tier, requestedAt: Date.now() };
+  saveSubscribers();
   return res.json({ ok: true });
 });
 
 app.post('/api/verify-premium', (req, res) => {
   const { deviceId, code, tier = 'premium' } = req.body || {};
-  if (!deviceId || !code) return res.status(400).json({ valid: false, reason: 'Missing fields' });
-  const result = checkAccess(deviceId, code.toUpperCase().replace(/\s/g, ''), tier);
+  if (!deviceId) return res.status(400).json({ valid: false, reason: 'Missing deviceId' });
+
+  // Always check manual auth first even without a code
+  const result = checkAccess(deviceId, code || '', tier);
   return res.json(result);
 });
 
@@ -198,13 +226,10 @@ app.post('/api/build', async (req, res) => {
       return res.status(500).json({ error: 'Server is not configured.' });
     }
 
-    // Check premium for framework code builds
+    // Check premium for framework builds
     const isPremiumLang = ['react', 'vue', 'svelte', 'angular'].includes(lang);
     if (isPremiumLang && buildMode !== 'zip') {
-      if (!deviceId || !premiumCode) {
-        return res.status(403).json({ error: 'Premium required for this language.' });
-      }
-      const check = checkAccess(deviceId, premiumCode.toUpperCase().replace(/\s/g, ''), 'premium');
+      const check = checkAccess(deviceId || '', premiumCode || '', 'premium');
       if (!check.valid) {
         return res.status(403).json({ error: `Premium access denied: ${check.reason}` });
       }
@@ -212,10 +237,7 @@ app.post('/api/build', async (req, res) => {
 
     // Check pro for ZIP builds
     if (buildMode === 'zip') {
-      if (!deviceId || !proCode) {
-        return res.status(403).json({ error: 'Pro required for ZIP builds.' });
-      }
-      const check = checkAccess(deviceId, proCode.toUpperCase().replace(/\s/g, ''), 'pro');
+      const check = checkAccess(deviceId || '', proCode || '', 'pro');
       if (!check.valid) {
         return res.status(403).json({ error: `Pro access denied: ${check.reason}` });
       }
@@ -228,37 +250,31 @@ app.post('/api/build', async (req, res) => {
     let buildConfig = null;
 
     if (buildMode === 'zip' && zipBase64) {
-      // Handle ZIP upload
+      // ZIP build — commit zip to repo
+      const { default: AdmZip } = await import('adm-zip');
       const zipBuffer = Buffer.from(zipBase64, 'base64');
       const zip = new AdmZip(zipBuffer);
       const fileList = zip.getEntries().map(e => e.entryName);
       detectedFramework = detectFramework(fileList);
       buildConfig = getBuildConfig(detectedFramework);
-
-      // Commit ZIP to repo
       zipPath = `builds/${buildId}/project.zip`;
-      await commitFile(
-        zipPath,
-        zipBase64,
-        `knanGuz: add zip payload ${buildId}`
-      );
+      await commitFile(zipPath, zipBase64, `knanGuz: add zip payload ${buildId}`);
     } else {
-      // Handle code paste
+      // Code build
       if (!htmlCode || typeof htmlCode !== 'string') {
         return res.status(400).json({ error: 'htmlCode is required.' });
       }
+      let compiledHtml = htmlCode;
       if (htmlCode.startsWith('__FRAMEWORK__')) {
         const parts = htmlCode.split('__CODE__');
         const frameworkLang = parts[0].replace('__FRAMEWORK__', '');
         const rawCode = parts[1] || '';
-        finalHtml = compileFrameworkCode(frameworkLang, rawCode, appName);
-      } else {
-        finalHtml = htmlCode;
+        compiledHtml = compileFrameworkCode(frameworkLang, rawCode, appName);
       }
       const htmlPath = `builds/${buildId}/index.html`;
       await commitFile(
         htmlPath,
-        Buffer.from(finalHtml, 'utf-8').toString('base64'),
+        Buffer.from(compiledHtml, 'utf-8').toString('base64'),
         `knanGuz: add html payload ${buildId}`
       );
     }
@@ -277,7 +293,7 @@ app.post('/api/build', async (req, res) => {
       downloadUrl: null, error: null,
     });
 
-    // ICON FIX: wait 3 seconds so GitHub registers all commits before dispatch
+    // Wait 3 seconds so GitHub registers all commits before dispatch
     await new Promise(r => setTimeout(r, 3000));
 
     const dispatchRes = await fetch(
@@ -358,33 +374,60 @@ function adminAuth(req, res, next) {
 }
 
 app.get('/api/admin/dashboard', adminAuth, (req, res) => {
-  const subscribers = Array.from(pendingSubscribers.values())
+  const subscribers = Object.values(subscribersStore)
     .sort((a, b) => b.requestedAt - a.requestedAt);
-  const premiumUsers = Array.from(premiumCodes.entries()).map(([code, data]) => ({
-    code, ...data, tier: 'premium', expired: Date.now() > data.expiresAt,
+
+  const codeUsers = Object.entries(codesStore).map(([code, data]) => ({
+    code, ...data, expired: data.expiresAt && Date.now() > data.expiresAt,
+    source: 'code',
   }));
-  const proUsers = Array.from(proCodes.entries()).map(([code, data]) => ({
-    code, ...data, tier: 'pro', expired: Date.now() > data.expiresAt,
+
+  const manualUsers = Object.entries(authorizedStore).map(([deviceId, data]) => ({
+    deviceId, ...data, source: 'manual', code: 'MANUAL',
   }));
-  return res.json({ subscribers, premiumUsers: [...premiumUsers, ...proUsers] });
+
+  return res.json({
+    subscribers,
+    premiumUsers: [...codeUsers, ...manualUsers].sort((a, b) => b.createdAt - a.createdAt),
+  });
 });
 
 app.post('/api/admin/generate-code', adminAuth, (req, res) => {
   const { deviceId, tier = 'premium' } = req.body || {};
   if (!deviceId) return res.status(400).json({ error: 'deviceId required' });
   const code = generateCode(deviceId, tier);
-  const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
-  const store = tier === 'pro' ? proCodes : premiumCodes;
-  store.set(code, { deviceId, tier, createdAt: Date.now(), expiresAt, revoked: false });
-  pendingSubscribers.delete(`${deviceId}-${tier}`);
+  const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
+  codesStore[code] = { deviceId, tier, createdAt: Date.now(), expiresAt, revoked: false };
+  saveCodes();
+  delete subscribersStore[`${deviceId}-${tier}`];
+  saveSubscribers();
   return res.json({ code, expiresAt, tier });
 });
 
-app.post('/api/admin/revoke-code', adminAuth, (req, res) => {
-  const { code } = req.body || {};
-  let record = premiumCodes.get(code) || proCodes.get(code);
-  if (!record) return res.status(404).json({ error: 'Code not found' });
-  record.revoked = true;
+// Manual authorization — permanent, no expiry
+app.post('/api/admin/authorize', adminAuth, (req, res) => {
+  const { deviceId, tier = 'premium', note = '' } = req.body || {};
+  if (!deviceId) return res.status(400).json({ error: 'deviceId required' });
+  authorizedStore[deviceId] = {
+    tier, authorizedAt: Date.now(),
+    revoked: false, note,
+  };
+  saveAuthorized();
+  delete subscribersStore[`${deviceId}-${tier}`];
+  saveSubscribers();
+  return res.json({ ok: true, deviceId, tier });
+});
+
+app.post('/api/admin/revoke', adminAuth, (req, res) => {
+  const { code, deviceId } = req.body || {};
+  if (code && codesStore[code]) {
+    codesStore[code].revoked = true;
+    saveCodes();
+  }
+  if (deviceId && authorizedStore[deviceId]) {
+    authorizedStore[deviceId].revoked = true;
+    saveAuthorized();
+  }
   return res.json({ ok: true });
 });
 
@@ -402,7 +445,7 @@ app.get(`/${ADMIN_PATH || 'admin'}`, (req, res) => {
 <div id="loginScreen" class="flex items-center justify-center min-h-screen">
   <div class="bg-slate-800 rounded-2xl p-8 w-80 space-y-4">
     <h1 class="text-xl font-bold text-emerald-400 text-center">🔐 knanGuz Admin</h1>
-    <input id="adminPwd" type="password" placeholder="Enter admin password"
+    <input id="adminPwd" type="password" placeholder="Admin password"
       class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
     <button onclick="login()"
       class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-semibold rounded-lg py-2 text-sm">
@@ -418,13 +461,46 @@ app.get(`/${ADMIN_PATH || 'admin'}`, (req, res) => {
     <button onclick="logout()" class="text-xs text-slate-400 hover:text-slate-200">Logout</button>
   </div>
 
+  <!-- Manual Authorize -->
   <div class="bg-slate-800 rounded-2xl p-6">
-    <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400 mb-4">📥 Pending Subscribers</h2>
+    <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400 mb-4">
+      ⚡ Manual Authorization
+    </h2>
+    <p class="text-xs text-slate-400 mb-4">
+      Authorize any device ID directly — permanent access, no code needed, no expiry.
+    </p>
+    <div class="flex gap-3 flex-wrap">
+      <input id="manualDeviceId" type="text" placeholder="Device ID (XXXX-XXXX-XXXX-XXXX)"
+        class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-48" />
+      <input id="manualNote" type="text" placeholder="Note (e.g. paid via M-Pesa)"
+        class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-48" />
+    </div>
+    <div class="flex gap-3 mt-3">
+      <button onclick="manualAuthorize('premium')"
+        class="bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded-lg px-4 py-2 text-sm">
+        ⭐ Authorize Premium
+      </button>
+      <button onclick="manualAuthorize('pro')"
+        class="bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg px-4 py-2 text-sm">
+        🚀 Authorize Pro
+      </button>
+    </div>
+    <p id="manualMsg" class="text-xs text-emerald-400 hidden mt-2"></p>
+  </div>
+
+  <!-- Pending Subscribers -->
+  <div class="bg-slate-800 rounded-2xl p-6">
+    <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400 mb-4">
+      📥 Pending Subscribers
+    </h2>
     <div id="subscribersList"><p class="text-xs text-slate-500">Loading...</p></div>
   </div>
 
+  <!-- Active Users -->
   <div class="bg-slate-800 rounded-2xl p-6">
-    <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400 mb-4">⭐ Active Users</h2>
+    <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400 mb-4">
+      ⭐ Active Users
+    </h2>
     <div id="premiumList"><p class="text-xs text-slate-500">Loading...</p></div>
   </div>
 </div>
@@ -452,53 +528,82 @@ app.get(`/${ADMIN_PATH || 'admin'}`, (req, res) => {
     const res = await fetch('/api/admin/dashboard', { headers: { 'X-Admin-Password': adminPassword } });
     const data = await res.json();
     renderSubscribers(data.subscribers || []);
-    renderPremium(data.premiumUsers || []);
+    renderUsers(data.premiumUsers || []);
+  }
+
+  async function manualAuthorize(tier) {
+    const deviceId = document.getElementById('manualDeviceId').value.trim();
+    const note = document.getElementById('manualNote').value.trim();
+    const msg = document.getElementById('manualMsg');
+    if (!deviceId) { alert('Please enter a Device ID'); return; }
+    const res = await fetch('/api/admin/authorize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Password': adminPassword },
+      body: JSON.stringify({ deviceId, tier, note })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      msg.textContent = '✅ ' + deviceId + ' authorized as ' + tier.toUpperCase() + ' permanently!';
+      msg.classList.remove('hidden');
+      document.getElementById('manualDeviceId').value = '';
+      document.getElementById('manualNote').value = '';
+      loadDashboard();
+    }
   }
 
   function renderSubscribers(list) {
     const el = document.getElementById('subscribersList');
     if (!list.length) { el.innerHTML = '<p class="text-xs text-slate-500">No pending subscribers.</p>'; return; }
     el.innerHTML = list.map(s => \`
-      <div class="bg-slate-900 rounded-xl p-4 flex items-center justify-between gap-4 mb-3">
+      <div class="bg-slate-900 rounded-xl p-4 flex items-center justify-between gap-4 mb-3 flex-wrap">
         <div>
           <p class="text-xs text-slate-400">Device ID</p>
-          <p class="text-sm font-mono text-slate-200">\${s.deviceId}</p>
-          <p class="text-xs text-slate-500 mt-1">\${new Date(s.requestedAt).toLocaleString()}</p>
+          <p class="text-sm font-mono text-slate-200 break-all">\${s.deviceId}</p>
+          <p class="text-xs text-slate-500 mt-1">\${s.tier?.toUpperCase()} · \${new Date(s.requestedAt).toLocaleString()}</p>
         </div>
-        <div class="flex gap-2">
+        <div class="flex gap-2 flex-wrap">
           <button onclick="generateCode('\${s.deviceId}', 'premium')"
             class="bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded-lg px-3 py-2 text-xs">
-            Premium $5
+            ⭐ Code Premium
           </button>
           <button onclick="generateCode('\${s.deviceId}', 'pro')"
-            class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg px-3 py-2 text-xs">
-            Pro $10
+            class="bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg px-3 py-2 text-xs">
+            🚀 Code Pro
+          </button>
+          <button onclick="quickAuthorize('\${s.deviceId}', 'premium')"
+            class="bg-yellow-800 hover:bg-yellow-700 text-yellow-200 font-semibold rounded-lg px-3 py-2 text-xs">
+            ⚡ Auth Premium
+          </button>
+          <button onclick="quickAuthorize('\${s.deviceId}', 'pro')"
+            class="bg-blue-800 hover:bg-blue-700 text-blue-200 font-semibold rounded-lg px-3 py-2 text-xs">
+            ⚡ Auth Pro
           </button>
         </div>
       </div>
     \`).join('');
   }
 
-  function renderPremium(list) {
+  function renderUsers(list) {
     const el = document.getElementById('premiumList');
     if (!list.length) { el.innerHTML = '<p class="text-xs text-slate-500">No users yet.</p>'; return; }
     el.innerHTML = list.map(u => \`
       <div class="bg-slate-900 rounded-xl p-4 mb-3">
-        <div class="flex items-center justify-between gap-4">
+        <div class="flex items-center justify-between gap-4 flex-wrap">
           <div class="flex-1">
-            <div class="flex items-center gap-2 mb-1">
-              <span class="text-xs font-mono bg-emerald-900 text-emerald-300 px-2 py-1 rounded">\${u.code}</span>
+            <div class="flex items-center gap-2 mb-1 flex-wrap">
+              <span class="text-xs font-mono bg-slate-800 text-slate-300 px-2 py-1 rounded">\${u.code}</span>
               <span class="text-xs px-2 py-1 rounded \${u.tier === 'pro' ? 'bg-blue-900 text-blue-300' : 'bg-yellow-900 text-yellow-300'}">\${u.tier?.toUpperCase()}</span>
-              \${u.revoked ? '<span class="text-xs text-red-400">REVOKED</span>' : ''}
+              \${u.source === 'manual' ? '<span class="text-xs bg-emerald-900 text-emerald-300 px-2 py-1 rounded">MANUAL</span>' : ''}
+              \${u.revoked ? '<span class="text-xs text-red-400">REVOKED</span>' : '<span class="text-xs text-emerald-400">ACTIVE</span>'}
               \${u.expired && !u.revoked ? '<span class="text-xs text-yellow-400">EXPIRED</span>' : ''}
-              \${!u.revoked && !u.expired ? '<span class="text-xs text-emerald-400">ACTIVE</span>' : ''}
             </div>
-            <p class="text-xs text-slate-500">Device: \${u.deviceId}</p>
-            <p class="text-xs text-slate-500">Expires: \${new Date(u.expiresAt).toLocaleDateString()}</p>
+            <p class="text-xs text-slate-500 break-all">Device: \${u.deviceId}</p>
+            \${u.note ? '<p class="text-xs text-slate-500">Note: ' + u.note + '</p>' : ''}
+            \${u.expiresAt ? '<p class="text-xs text-slate-500">Expires: ' + new Date(u.expiresAt).toLocaleDateString() + '</p>' : '<p class="text-xs text-emerald-600">No expiry</p>'}
           </div>
           <div class="flex gap-2">
-            <button onclick="copyCode('\${u.code}')" class="bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg px-3 py-2 text-xs">Copy</button>
-            \${!u.revoked ? \`<button onclick="revokeCode('\${u.code}')" class="bg-red-900 hover:bg-red-800 text-red-300 rounded-lg px-3 py-2 text-xs">Revoke</button>\` : ''}
+            \${u.code !== 'MANUAL' ? '<button onclick="copyCode(\\''+u.code+'\\')" class="bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg px-3 py-2 text-xs">Copy</button>' : ''}
+            \${!u.revoked ? '<button onclick="revokeUser(\\''+u.code+'\\', \\''+u.deviceId+'\\')" class="bg-red-900 hover:bg-red-800 text-red-300 rounded-lg px-3 py-2 text-xs">Revoke</button>' : ''}
           </div>
         </div>
       </div>
@@ -513,24 +618,41 @@ app.get(`/${ADMIN_PATH || 'admin'}`, (req, res) => {
     });
     const data = await res.json();
     if (data.code) {
-      await navigator.clipboard.writeText(data.code);
-      alert(\`\${tier.toUpperCase()} code generated and copied!\\n\\n\${data.code}\\n\\nExpires: \${new Date(data.expiresAt).toLocaleDateString()}\`);
+      await navigator.clipboard.writeText(data.code).catch(() => {});
+      alert(tier.toUpperCase() + ' code generated!\\n\\n' + data.code + '\\n\\nExpires: ' + new Date(data.expiresAt).toLocaleDateString() + '\\n\\nCopied to clipboard — send to user via WhatsApp!');
       loadDashboard();
     }
   }
 
-  async function revokeCode(code) {
-    if (!confirm('Revoke this code?')) return;
-    await fetch('/api/admin/revoke-code', {
+  async function quickAuthorize(deviceId, tier) {
+    if (!confirm('Permanently authorize ' + deviceId + ' as ' + tier.toUpperCase() + '? No expiry.')) return;
+    const res = await fetch('/api/admin/authorize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Password': adminPassword },
-      body: JSON.stringify({ code })
+      body: JSON.stringify({ deviceId, tier, note: 'Quick auth from subscriber list' })
+    });
+    const data = await res.json();
+    if (data.ok) { alert('✅ Authorized!'); loadDashboard(); }
+  }
+
+  async function revokeUser(code, deviceId) {
+    if (!confirm('Revoke access? This cannot be undone automatically.')) return;
+    await fetch('/api/admin/revoke', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Password': adminPassword },
+      body: JSON.stringify({ code: code !== 'MANUAL' ? code : undefined, deviceId })
     });
     loadDashboard();
   }
 
-  function copyCode(code) { navigator.clipboard.writeText(code); alert('Copied: ' + code); }
-  document.getElementById('adminPwd').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+  function copyCode(code) {
+    navigator.clipboard.writeText(code).catch(() => {});
+    alert('Copied: ' + code);
+  }
+
+  document.getElementById('adminPwd').addEventListener('keydown', e => {
+    if (e.key === 'Enter') login();
+  });
 </script>
 </body>
 </html>`);
