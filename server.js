@@ -22,7 +22,7 @@ const GITHUB_API = 'https://api.github.com';
 const builds = new Map();
 
 // -----------------------------------------------------------------------
-// PERSISTENT STORAGE — saves to disk so codes survive Render restarts
+// PERSISTENT STORAGE
 // -----------------------------------------------------------------------
 const DATA_DIR = path.join(__dirname, 'data');
 const CODES_FILE = path.join(DATA_DIR, 'codes.json');
@@ -47,16 +47,9 @@ function saveJSON(file, data) {
   } catch (e) { console.error('saveJSON error:', e.message); }
 }
 
-// Load all data at startup
 let codesStore = loadJSON(CODES_FILE, {});
-// Shape: { [code]: { deviceId, tier, createdAt, expiresAt, revoked } }
-
 let subscribersStore = loadJSON(SUBSCRIBERS_FILE, {});
-// Shape: { [deviceId-tier]: { deviceId, tier, requestedAt } }
-
 let authorizedStore = loadJSON(AUTHORIZED_FILE, {});
-// Shape: { [deviceId]: { tier, authorizedAt, revoked, note } }
-// Manual authorizations — no expiry
 
 function saveCodes() { saveJSON(CODES_FILE, codesStore); }
 function saveSubscribers() { saveJSON(SUBSCRIBERS_FILE, subscribersStore); }
@@ -157,7 +150,6 @@ function generateCode(deviceId, tier) {
   return code.match(/.{1,4}/g).join('-');
 }
 
-// Check access — checks both code-based and manual authorization
 function checkAccess(deviceId, code, tier) {
   // Check manual authorization first — permanent, no expiry
   const manualAuth = authorizedStore[deviceId];
@@ -165,12 +157,7 @@ function checkAccess(deviceId, code, tier) {
     if (manualAuth.tier === tier || manualAuth.tier === 'pro') {
       return { valid: true, source: 'manual' };
     }
-    // Pro users also get premium access
-    if (tier === 'premium' && manualAuth.tier === 'pro') {
-      return { valid: true, source: 'manual' };
-    }
   }
-
   // Check code-based access
   if (!code) return { valid: false, reason: 'No code provided' };
   const cleanCode = code.toUpperCase().replace(/\s/g, '');
@@ -201,8 +188,6 @@ app.post('/api/subscribe-request', (req, res) => {
 app.post('/api/verify-premium', (req, res) => {
   const { deviceId, code, tier = 'premium' } = req.body || {};
   if (!deviceId) return res.status(400).json({ valid: false, reason: 'Missing deviceId' });
-
-  // Always check manual auth first even without a code
   const result = checkAccess(deviceId, code || '', tier);
   return res.json(result);
 });
@@ -244,14 +229,12 @@ app.post('/api/build', async (req, res) => {
     }
 
     const buildId = crypto.randomUUID();
-    let finalHtml = '';
     let zipPath = null;
     let detectedFramework = 'html';
     let buildConfig = null;
 
     if (buildMode === 'zip' && zipBase64) {
-      // ZIP build — commit zip to repo
-      const { default: AdmZip } = await import('adm-zip');
+      const AdmZip = require('adm-zip');
       const zipBuffer = Buffer.from(zipBase64, 'base64');
       const zip = new AdmZip(zipBuffer);
       const fileList = zip.getEntries().map(e => e.entryName);
@@ -260,7 +243,6 @@ app.post('/api/build', async (req, res) => {
       zipPath = `builds/${buildId}/project.zip`;
       await commitFile(zipPath, zipBase64, `knanGuz: add zip payload ${buildId}`);
     } else {
-      // Code build
       if (!htmlCode || typeof htmlCode !== 'string') {
         return res.status(400).json({ error: 'htmlCode is required.' });
       }
@@ -296,6 +278,11 @@ app.post('/api/build', async (req, res) => {
     // Wait 3 seconds so GitHub registers all commits before dispatch
     await new Promise(r => setTimeout(r, 3000));
 
+    // Build config packed into one string to stay under 10 property limit
+    const buildConfigStr = buildConfig
+      ? `${buildConfig.install}||${buildConfig.build}||${buildConfig.outDir}`
+      : '||||dist';
+
     const dispatchRes = await fetch(
       `${GITHUB_API}/repos/${GITHUB_OWNER}/${GITHUB_REPO}/dispatches`,
       {
@@ -311,9 +298,7 @@ app.post('/api/build', async (req, res) => {
             zip_path: zipPath || '',
             icon_path: iconPath || '',
             framework: detectedFramework,
-            build_install: buildConfig ? buildConfig.install : '',
-            build_cmd: buildConfig ? buildConfig.build : '',
-            build_out_dir: buildConfig ? buildConfig.outDir : '',
+            build_config: buildConfigStr,
             callback_url: `${PUBLIC_BASE_URL}/api/build-complete`,
           },
         }),
@@ -376,16 +361,12 @@ function adminAuth(req, res, next) {
 app.get('/api/admin/dashboard', adminAuth, (req, res) => {
   const subscribers = Object.values(subscribersStore)
     .sort((a, b) => b.requestedAt - a.requestedAt);
-
   const codeUsers = Object.entries(codesStore).map(([code, data]) => ({
-    code, ...data, expired: data.expiresAt && Date.now() > data.expiresAt,
-    source: 'code',
+    code, ...data, expired: data.expiresAt && Date.now() > data.expiresAt, source: 'code',
   }));
-
   const manualUsers = Object.entries(authorizedStore).map(([deviceId, data]) => ({
     deviceId, ...data, source: 'manual', code: 'MANUAL',
   }));
-
   return res.json({
     subscribers,
     premiumUsers: [...codeUsers, ...manualUsers].sort((a, b) => b.createdAt - a.createdAt),
@@ -396,7 +377,7 @@ app.post('/api/admin/generate-code', adminAuth, (req, res) => {
   const { deviceId, tier = 'premium' } = req.body || {};
   if (!deviceId) return res.status(400).json({ error: 'deviceId required' });
   const code = generateCode(deviceId, tier);
-  const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
+  const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
   codesStore[code] = { deviceId, tier, createdAt: Date.now(), expiresAt, revoked: false };
   saveCodes();
   delete subscribersStore[`${deviceId}-${tier}`];
@@ -404,12 +385,12 @@ app.post('/api/admin/generate-code', adminAuth, (req, res) => {
   return res.json({ code, expiresAt, tier });
 });
 
-// Manual authorization — permanent, no expiry
 app.post('/api/admin/authorize', adminAuth, (req, res) => {
   const { deviceId, tier = 'premium', note = '' } = req.body || {};
   if (!deviceId) return res.status(400).json({ error: 'deviceId required' });
   authorizedStore[deviceId] = {
     tier, authorizedAt: Date.now(),
+    createdAt: Date.now(),
     revoked: false, note,
   };
   saveAuthorized();
@@ -463,44 +444,39 @@ app.get(`/${ADMIN_PATH || 'admin'}`, (req, res) => {
 
   <!-- Manual Authorize -->
   <div class="bg-slate-800 rounded-2xl p-6">
-    <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400 mb-4">
-      ⚡ Manual Authorization
-    </h2>
-    <p class="text-xs text-slate-400 mb-4">
-      Authorize any device ID directly — permanent access, no code needed, no expiry.
-    </p>
-    <div class="flex gap-3 flex-wrap">
+    <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400 mb-2">⚡ Manual Authorization</h2>
+    <p class="text-xs text-slate-400 mb-4">Authorize any device ID directly — permanent, no expiry, no code needed.</p>
+    <div class="space-y-3">
       <input id="manualDeviceId" type="text" placeholder="Device ID (XXXX-XXXX-XXXX-XXXX)"
-        class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-48" />
-      <input id="manualNote" type="text" placeholder="Note (e.g. paid via M-Pesa)"
-        class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-48" />
+        class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+      <input id="manualNote" type="text" placeholder="Note (e.g. paid via M-Pesa KES 500)"
+        class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+      <div class="flex gap-3">
+        <button onclick="manualAuthorize('premium')"
+          class="flex-1 bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded-lg px-4 py-2 text-sm">
+          ⭐ Authorize Premium
+        </button>
+        <button onclick="manualAuthorize('pro')"
+          class="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg px-4 py-2 text-sm">
+          🚀 Authorize Pro
+        </button>
+      </div>
     </div>
-    <div class="flex gap-3 mt-3">
-      <button onclick="manualAuthorize('premium')"
-        class="bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded-lg px-4 py-2 text-sm">
-        ⭐ Authorize Premium
-      </button>
-      <button onclick="manualAuthorize('pro')"
-        class="bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg px-4 py-2 text-sm">
-        🚀 Authorize Pro
-      </button>
-    </div>
-    <p id="manualMsg" class="text-xs text-emerald-400 hidden mt-2"></p>
+    <p id="manualMsg" class="text-xs text-emerald-400 hidden mt-3"></p>
   </div>
 
   <!-- Pending Subscribers -->
   <div class="bg-slate-800 rounded-2xl p-6">
-    <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400 mb-4">
-      📥 Pending Subscribers
-    </h2>
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400">📥 Pending Subscribers</h2>
+      <button onclick="loadDashboard()" class="text-xs text-slate-400 hover:text-slate-200">🔄 Refresh</button>
+    </div>
     <div id="subscribersList"><p class="text-xs text-slate-500">Loading...</p></div>
   </div>
 
   <!-- Active Users -->
   <div class="bg-slate-800 rounded-2xl p-6">
-    <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400 mb-4">
-      ⭐ Active Users
-    </h2>
+    <h2 class="text-sm font-semibold uppercase tracking-wider text-emerald-400 mb-4">⭐ Active Users</h2>
     <div id="premiumList"><p class="text-xs text-slate-500">Loading...</p></div>
   </div>
 </div>
@@ -543,7 +519,7 @@ app.get(`/${ADMIN_PATH || 'admin'}`, (req, res) => {
     });
     const data = await res.json();
     if (data.ok) {
-      msg.textContent = '✅ ' + deviceId + ' authorized as ' + tier.toUpperCase() + ' permanently!';
+      msg.textContent = '✅ ' + deviceId + ' authorized as ' + tier.toUpperCase() + ' — permanent!';
       msg.classList.remove('hidden');
       document.getElementById('manualDeviceId').value = '';
       document.getElementById('manualNote').value = '';
@@ -555,27 +531,25 @@ app.get(`/${ADMIN_PATH || 'admin'}`, (req, res) => {
     const el = document.getElementById('subscribersList');
     if (!list.length) { el.innerHTML = '<p class="text-xs text-slate-500">No pending subscribers.</p>'; return; }
     el.innerHTML = list.map(s => \`
-      <div class="bg-slate-900 rounded-xl p-4 flex items-center justify-between gap-4 mb-3 flex-wrap">
-        <div>
-          <p class="text-xs text-slate-400">Device ID</p>
-          <p class="text-sm font-mono text-slate-200 break-all">\${s.deviceId}</p>
-          <p class="text-xs text-slate-500 mt-1">\${s.tier?.toUpperCase()} · \${new Date(s.requestedAt).toLocaleString()}</p>
-        </div>
-        <div class="flex gap-2 flex-wrap">
+      <div class="bg-slate-900 rounded-xl p-4 mb-3">
+        <p class="text-xs text-slate-400">Device ID</p>
+        <p class="text-sm font-mono text-slate-200 break-all mb-1">\${s.deviceId}</p>
+        <p class="text-xs text-slate-500 mb-3">\${s.tier?.toUpperCase()} · \${new Date(s.requestedAt).toLocaleString()}</p>
+        <div class="grid grid-cols-2 gap-2">
           <button onclick="generateCode('\${s.deviceId}', 'premium')"
-            class="bg-yellow-600 hover:bg-yellow-500 text-white font-semibold rounded-lg px-3 py-2 text-xs">
+            class="bg-yellow-700 hover:bg-yellow-600 text-white font-semibold rounded-lg px-3 py-2 text-xs">
             ⭐ Code Premium
           </button>
           <button onclick="generateCode('\${s.deviceId}', 'pro')"
-            class="bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-lg px-3 py-2 text-xs">
+            class="bg-blue-700 hover:bg-blue-600 text-white font-semibold rounded-lg px-3 py-2 text-xs">
             🚀 Code Pro
           </button>
           <button onclick="quickAuthorize('\${s.deviceId}', 'premium')"
-            class="bg-yellow-800 hover:bg-yellow-700 text-yellow-200 font-semibold rounded-lg px-3 py-2 text-xs">
+            class="bg-yellow-900 hover:bg-yellow-800 text-yellow-200 font-semibold rounded-lg px-3 py-2 text-xs">
             ⚡ Auth Premium
           </button>
           <button onclick="quickAuthorize('\${s.deviceId}', 'pro')"
-            class="bg-blue-800 hover:bg-blue-700 text-blue-200 font-semibold rounded-lg px-3 py-2 text-xs">
+            class="bg-blue-900 hover:bg-blue-800 text-blue-200 font-semibold rounded-lg px-3 py-2 text-xs">
             ⚡ Auth Pro
           </button>
         </div>
@@ -588,9 +562,9 @@ app.get(`/${ADMIN_PATH || 'admin'}`, (req, res) => {
     if (!list.length) { el.innerHTML = '<p class="text-xs text-slate-500">No users yet.</p>'; return; }
     el.innerHTML = list.map(u => \`
       <div class="bg-slate-900 rounded-xl p-4 mb-3">
-        <div class="flex items-center justify-between gap-4 flex-wrap">
-          <div class="flex-1">
-            <div class="flex items-center gap-2 mb-1 flex-wrap">
+        <div class="flex items-start justify-between gap-3 flex-wrap">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-2 flex-wrap">
               <span class="text-xs font-mono bg-slate-800 text-slate-300 px-2 py-1 rounded">\${u.code}</span>
               <span class="text-xs px-2 py-1 rounded \${u.tier === 'pro' ? 'bg-blue-900 text-blue-300' : 'bg-yellow-900 text-yellow-300'}">\${u.tier?.toUpperCase()}</span>
               \${u.source === 'manual' ? '<span class="text-xs bg-emerald-900 text-emerald-300 px-2 py-1 rounded">MANUAL</span>' : ''}
@@ -598,12 +572,14 @@ app.get(`/${ADMIN_PATH || 'admin'}`, (req, res) => {
               \${u.expired && !u.revoked ? '<span class="text-xs text-yellow-400">EXPIRED</span>' : ''}
             </div>
             <p class="text-xs text-slate-500 break-all">Device: \${u.deviceId}</p>
-            \${u.note ? '<p class="text-xs text-slate-500">Note: ' + u.note + '</p>' : ''}
-            \${u.expiresAt ? '<p class="text-xs text-slate-500">Expires: ' + new Date(u.expiresAt).toLocaleDateString() + '</p>' : '<p class="text-xs text-emerald-600">No expiry</p>'}
+            \${u.note ? \`<p class="text-xs text-slate-500">Note: \${u.note}</p>\` : ''}
+            \${u.expiresAt
+              ? \`<p class="text-xs text-slate-500">Expires: \${new Date(u.expiresAt).toLocaleDateString()}</p>\`
+              : '<p class="text-xs text-emerald-600 font-semibold">No expiry — permanent</p>'}
           </div>
-          <div class="flex gap-2">
-            \${u.code !== 'MANUAL' ? '<button onclick="copyCode(\\''+u.code+'\\')" class="bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg px-3 py-2 text-xs">Copy</button>' : ''}
-            \${!u.revoked ? '<button onclick="revokeUser(\\''+u.code+'\\', \\''+u.deviceId+'\\')" class="bg-red-900 hover:bg-red-800 text-red-300 rounded-lg px-3 py-2 text-xs">Revoke</button>' : ''}
+          <div class="flex gap-2 flex-shrink-0">
+            \${u.code !== 'MANUAL' ? \`<button onclick="copyCode('\${u.code}')" class="bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg px-3 py-2 text-xs">Copy</button>\` : ''}
+            \${!u.revoked ? \`<button onclick="revokeUser('\${u.code}', '\${u.deviceId}')" class="bg-red-900 hover:bg-red-800 text-red-300 rounded-lg px-3 py-2 text-xs">Revoke</button>\` : ''}
           </div>
         </div>
       </div>
@@ -619,24 +595,24 @@ app.get(`/${ADMIN_PATH || 'admin'}`, (req, res) => {
     const data = await res.json();
     if (data.code) {
       await navigator.clipboard.writeText(data.code).catch(() => {});
-      alert(tier.toUpperCase() + ' code generated!\\n\\n' + data.code + '\\n\\nExpires: ' + new Date(data.expiresAt).toLocaleDateString() + '\\n\\nCopied to clipboard — send to user via WhatsApp!');
+      alert(tier.toUpperCase() + ' code generated!\\n\\n' + data.code + '\\n\\nExpires: ' + new Date(data.expiresAt).toLocaleDateString() + '\\n\\nCopied! Send to user via WhatsApp.');
       loadDashboard();
     }
   }
 
   async function quickAuthorize(deviceId, tier) {
-    if (!confirm('Permanently authorize ' + deviceId + ' as ' + tier.toUpperCase() + '? No expiry.')) return;
+    if (!confirm('Permanently authorize ' + deviceId + ' as ' + tier.toUpperCase() + '?\\nNo expiry — revocable anytime.')) return;
     const res = await fetch('/api/admin/authorize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Password': adminPassword },
       body: JSON.stringify({ deviceId, tier, note: 'Quick auth from subscriber list' })
     });
     const data = await res.json();
-    if (data.ok) { alert('✅ Authorized!'); loadDashboard(); }
+    if (data.ok) { alert('✅ Authorized as ' + tier.toUpperCase() + '!'); loadDashboard(); }
   }
 
   async function revokeUser(code, deviceId) {
-    if (!confirm('Revoke access? This cannot be undone automatically.')) return;
+    if (!confirm('Revoke this access?')) return;
     await fetch('/api/admin/revoke', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Admin-Password': adminPassword },
