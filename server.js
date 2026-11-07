@@ -21,6 +21,9 @@ const {
 const GITHUB_API = 'https://api.github.com';
 const builds = new Map();
 
+// ===== TEMPORARY: set to false to bring payment restrictions back =====
+const FREE_MODE = true;
+
 // -----------------------------------------------------------------------
 // PERSISTENT STORAGE
 // -----------------------------------------------------------------------
@@ -151,6 +154,7 @@ function generateCode(deviceId, tier) {
 }
 
 function checkAccess(deviceId, code, tier) {
+  if (FREE_MODE) return { valid: true, source: 'free-mode' };
   // Check manual authorization first — permanent, no expiry
   const manualAuth = authorizedStore[deviceId];
   if (manualAuth && !manualAuth.revoked) {
@@ -500,145 +504,4 @@ app.get(`/${ADMIN_PATH || 'admin'}`, (req, res) => {
     document.getElementById('dashboard').classList.add('hidden');
   }
 
-  async function loadDashboard() {
-    const res = await fetch('/api/admin/dashboard', { headers: { 'X-Admin-Password': adminPassword } });
-    const data = await res.json();
-    renderSubscribers(data.subscribers || []);
-    renderUsers(data.premiumUsers || []);
-  }
-
-  async function manualAuthorize(tier) {
-    const deviceId = document.getElementById('manualDeviceId').value.trim();
-    const note = document.getElementById('manualNote').value.trim();
-    const msg = document.getElementById('manualMsg');
-    if (!deviceId) { alert('Please enter a Device ID'); return; }
-    const res = await fetch('/api/admin/authorize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Password': adminPassword },
-      body: JSON.stringify({ deviceId, tier, note })
-    });
-    const data = await res.json();
-    if (data.ok) {
-      msg.textContent = '✅ ' + deviceId + ' authorized as ' + tier.toUpperCase() + ' — permanent!';
-      msg.classList.remove('hidden');
-      document.getElementById('manualDeviceId').value = '';
-      document.getElementById('manualNote').value = '';
-      loadDashboard();
-    }
-  }
-
-  function renderSubscribers(list) {
-    const el = document.getElementById('subscribersList');
-    if (!list.length) { el.innerHTML = '<p class="text-xs text-slate-500">No pending subscribers.</p>'; return; }
-    el.innerHTML = list.map(s => \`
-      <div class="bg-slate-900 rounded-xl p-4 mb-3">
-        <p class="text-xs text-slate-400">Device ID</p>
-        <p class="text-sm font-mono text-slate-200 break-all mb-1">\${s.deviceId}</p>
-        <p class="text-xs text-slate-500 mb-3">\${s.tier?.toUpperCase()} · \${new Date(s.requestedAt).toLocaleString()}</p>
-        <div class="grid grid-cols-2 gap-2">
-          <button onclick="generateCode('\${s.deviceId}', 'premium')"
-            class="bg-yellow-700 hover:bg-yellow-600 text-white font-semibold rounded-lg px-3 py-2 text-xs">
-            ⭐ Code Premium
-          </button>
-          <button onclick="generateCode('\${s.deviceId}', 'pro')"
-            class="bg-blue-700 hover:bg-blue-600 text-white font-semibold rounded-lg px-3 py-2 text-xs">
-            🚀 Code Pro
-          </button>
-          <button onclick="quickAuthorize('\${s.deviceId}', 'premium')"
-            class="bg-yellow-900 hover:bg-yellow-800 text-yellow-200 font-semibold rounded-lg px-3 py-2 text-xs">
-            ⚡ Auth Premium
-          </button>
-          <button onclick="quickAuthorize('\${s.deviceId}', 'pro')"
-            class="bg-blue-900 hover:bg-blue-800 text-blue-200 font-semibold rounded-lg px-3 py-2 text-xs">
-            ⚡ Auth Pro
-          </button>
-        </div>
-      </div>
-    \`).join('');
-  }
-
-  function renderUsers(list) {
-    const el = document.getElementById('premiumList');
-    if (!list.length) { el.innerHTML = '<p class="text-xs text-slate-500">No users yet.</p>'; return; }
-    el.innerHTML = list.map(u => \`
-      <div class="bg-slate-900 rounded-xl p-4 mb-3">
-        <div class="flex items-start justify-between gap-3 flex-wrap">
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 mb-2 flex-wrap">
-              <span class="text-xs font-mono bg-slate-800 text-slate-300 px-2 py-1 rounded">\${u.code}</span>
-              <span class="text-xs px-2 py-1 rounded \${u.tier === 'pro' ? 'bg-blue-900 text-blue-300' : 'bg-yellow-900 text-yellow-300'}">\${u.tier?.toUpperCase()}</span>
-              \${u.source === 'manual' ? '<span class="text-xs bg-emerald-900 text-emerald-300 px-2 py-1 rounded">MANUAL</span>' : ''}
-              \${u.revoked ? '<span class="text-xs text-red-400">REVOKED</span>' : '<span class="text-xs text-emerald-400">ACTIVE</span>'}
-              \${u.expired && !u.revoked ? '<span class="text-xs text-yellow-400">EXPIRED</span>' : ''}
-            </div>
-            <p class="text-xs text-slate-500 break-all">Device: \${u.deviceId}</p>
-            \${u.note ? \`<p class="text-xs text-slate-500">Note: \${u.note}</p>\` : ''}
-            \${u.expiresAt
-              ? \`<p class="text-xs text-slate-500">Expires: \${new Date(u.expiresAt).toLocaleDateString()}</p>\`
-              : '<p class="text-xs text-emerald-600 font-semibold">No expiry — permanent</p>'}
-          </div>
-          <div class="flex gap-2 flex-shrink-0">
-            \${u.code !== 'MANUAL' ? \`<button onclick="copyCode('\${u.code}')" class="bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg px-3 py-2 text-xs">Copy</button>\` : ''}
-            \${!u.revoked ? \`<button onclick="revokeUser('\${u.code}', '\${u.deviceId}')" class="bg-red-900 hover:bg-red-800 text-red-300 rounded-lg px-3 py-2 text-xs">Revoke</button>\` : ''}
-          </div>
-        </div>
-      </div>
-    \`).join('');
-  }
-
-  async function generateCode(deviceId, tier) {
-    const res = await fetch('/api/admin/generate-code', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Password': adminPassword },
-      body: JSON.stringify({ deviceId, tier })
-    });
-    const data = await res.json();
-    if (data.code) {
-      await navigator.clipboard.writeText(data.code).catch(() => {});
-      alert(tier.toUpperCase() + ' code generated!\\n\\n' + data.code + '\\n\\nExpires: ' + new Date(data.expiresAt).toLocaleDateString() + '\\n\\nCopied! Send to user via WhatsApp.');
-      loadDashboard();
-    }
-  }
-
-  async function quickAuthorize(deviceId, tier) {
-    if (!confirm('Permanently authorize ' + deviceId + ' as ' + tier.toUpperCase() + '?\\nNo expiry — revocable anytime.')) return;
-    const res = await fetch('/api/admin/authorize', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Password': adminPassword },
-      body: JSON.stringify({ deviceId, tier, note: 'Quick auth from subscriber list' })
-    });
-    const data = await res.json();
-    if (data.ok) { alert('✅ Authorized as ' + tier.toUpperCase() + '!'); loadDashboard(); }
-  }
-
-  async function revokeUser(code, deviceId) {
-    if (!confirm('Revoke this access?')) return;
-    await fetch('/api/admin/revoke', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Password': adminPassword },
-      body: JSON.stringify({ code: code !== 'MANUAL' ? code : undefined, deviceId })
-    });
-    loadDashboard();
-  }
-
-  function copyCode(code) {
-    navigator.clipboard.writeText(code).catch(() => {});
-    alert('Copied: ' + code);
-  }
-
-  document.getElementById('adminPwd').addEventListener('keydown', e => {
-    if (e.key === 'Enter') login();
-  });
-</script>
-</body>
-</html>`);
-});
-
-app.listen(PORT, () => {
-  console.log(`[knanGuz] Server listening on port ${PORT}`);
-  setInterval(() => {
-    fetch(`${PUBLIC_BASE_URL}/healthz`)
-      .then(() => console.log('[knanGuz] Keep-alive ping sent'))
-      .catch(() => console.log('[knanGuz] Keep-alive ping failed'));
-  }, 4 * 60 * 1000);
-});
+  async function loadDashboard(
