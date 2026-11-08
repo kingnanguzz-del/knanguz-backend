@@ -290,6 +290,7 @@
   <script>
     const API_BASE = '';
     const WHATSAPP_NUMBER = '254740403637';
+    const FREE_MODE = true; // TEMPORARY: set to false to bring payments back
     let currentSubTier = 'premium';
     let currentManageTier = 'premium';
     let activeZipBase64 = null;
@@ -326,14 +327,15 @@
 
     function getPremiumCode() { return localStorage.getItem('knanguz_premium_code') || null; }
     function getProCode() { return localStorage.getItem('knanguz_pro_code') || null; }
-    function isPremium() { return !!getPremiumCode(); }
-    function isPro() { return !!getProCode(); }
+    function isPremium() { return FREE_MODE || !!getPremiumCode(); }
+    function isPro() { return FREE_MODE || !!getProCode(); }
 
     function updateUI() {
-      document.getElementById('premiumBadge').classList.toggle('hidden', !isPremium());
-      document.getElementById('proBadge').classList.toggle('hidden', !isPro());
-      document.getElementById('subscribeBtn').classList.toggle('hidden', isPremium());
-      document.getElementById('proBtn').classList.toggle('hidden', isPro());
+      // In free mode all four payment buttons are hidden
+      document.getElementById('premiumBadge').classList.toggle('hidden', FREE_MODE || !isPremium());
+      document.getElementById('proBadge').classList.toggle('hidden', FREE_MODE || !isPro());
+      document.getElementById('subscribeBtn').classList.toggle('hidden', FREE_MODE || isPremium());
+      document.getElementById('proBtn').classList.toggle('hidden', FREE_MODE || isPro());
     }
 
     // Tab switching
